@@ -1,0 +1,112 @@
+/* =============================================================================
+   HM Finanças — reset.css
+   Reset minimalista e moderno baseado em boas práticas atuais.
+   Remove inconsistências entre navegadores sem apagar tudo indiscriminadamente.
+   ============================================================================= */
+
+/* --- Box sizing universal --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* --- Scroll suave e texto melhorado --- */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Fonte base de 16px equivale a 1rem */
+  font-size: 16px;
+}
+
+/* --- Body base --- */
+body {
+  min-height: 100dvh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* --- Elementos de mídia responsivos --- */
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* --- Herança de fonte para inputs e botões --- */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+/* --- Remover estilos padrão de listas quando usadas como navegação --- */
+ul[role='list'],
+ol[role='list'] {
+  list-style: none;
+}
+
+/* --- Títulos não quebram texto de forma inesperada --- */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+/* --- Links sem sublinhado padrão (estilos definidos nos componentes) --- */
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* --- Botão sem estilos nativos --- */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* --- Foco visível para acessibilidade (substituir outline padrão feio) --- */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* --- Remover outline para clique com mouse --- */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* --- Tipografia de código --- */
+code,
+pre,
+kbd,
+samp {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.875em;
+}
+
+/* --- Tabelas sem bordas colapsadas por padrão --- */
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* --- Raiz da aplicação ocupa toda a tela --- */
+#app {
+  width: 100%;
+  min-height: 100dvh;
+}

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <!-- ===================================================================
+    HM Finanças — index.html
+    Ponto de entrada principal da aplicação.
+    Esta página carrega os estilos globais e o script principal (app.js),
+    que assume o controle da renderização e da navegação a partir daqui.
+  =================================================================== -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="HM Finanças — Sistema Financeiro e de Crédito Pessoal" />
+  <meta name="theme-color" content="#0a0a0a" />
+
+  <!-- Open Graph (compartilhamento em redes sociais) -->
+  <meta property="og:title" content="HM Finanças" />
+  <meta property="og:description" content="Sistema Financeiro e de Crédito Pessoal" />
+  <meta property="og:type" content="website" />
+
+  <title>HM Finanças</title>
+  <link rel="icon" href="data:," />
+
+  <!-- Fontes do Google Fonts: Inter para interface, Playfair Display para marca -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Ícones: Material Symbols Outlined (Google) -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    rel="stylesheet"
+  />
+
+  <!-- ===== ESTILOS GLOBAIS (ordem importa) ===== -->
+  <link rel="stylesheet" href="styles/reset.css" />
+  <link rel="stylesheet" href="styles/variables.css" />
+  <link rel="stylesheet" href="styles/global.css" />
+  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/themes.css" />
+</head>
+
+<body>
+
+  <!-- ===================================================================
+    #app — Raiz da aplicação.
+    O app.js injeta todo o conteúdo dinâmico aqui, incluindo telas,
+    sidebar, header e modais, conforme a rota ativa.
+  =================================================================== -->
+  <div id="app">
+
+    <!-- Tela de carregamento inicial (exibida enquanto o app inicializa) -->
+    <div id="splash-screen" class="splash-screen" aria-live="polite" role="status">
+      <div class="splash-logo">
+        <!-- Logotipo HM Finanças (renderizado via CSS + texto) -->
+        <div class="splash-logo-icon" aria-hidden="true">
+          <span class="logo-hm">HM</span>
+          <span class="logo-cifrão">$</span>
+        </div>
+        <div class="splash-logo-text">
+          <span class="logo-brand">HM Finanças</span>
+          <span class="logo-tagline">Sistema Financeiro &amp; de Crédito</span>
+        </div>
+      </div>
+
+      <!-- Indicador de carregamento animado -->
+      <div class="splash-loader" aria-hidden="true">
+        <div class="loader-bar"></div>
+      </div>
+
+      <p class="splash-version">v1.0.0 — Módulo 1</p>
+    </div>
+
+  </div><!-- /#app -->
+
+
+  <!-- ===================================================================
+    SCRIPTS — carregados no final do body para não bloquear a renderização.
+    Ordem obrigatória: utilitários → firebase → app principal → roteador.
+  =================================================================== -->
+
+  <!-- App principal (ponto de entrada) -->
+  <script type="module" src="scripts/app.js"></script>
+
+</body>
+</html>

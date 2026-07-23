@@ -1,0 +1,74 @@
+# =============================================================================
+# HM Finanças — .gitignore
+# Arquivos e pastas que NÃO devem ser enviados ao repositório.
+# =============================================================================
+
+# --- CREDENCIAIS E CONFIGURAÇÕES SENSÍVEIS ---
+# NUNCA subir o arquivo com as chaves reais do Firebase.
+scripts/firebase/firebase-config.js
+
+# --- DEPENDÊNCIAS E MÓDULOS ---
+node_modules/
+.npm/
+
+# --- ARQUIVOS DE SISTEMA OPERACIONAL ---
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+
+# --- EDITORES E IDEs ---
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# JetBrains (WebStorm, IntelliJ)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# --- LOGS E TEMPORÁRIOS ---
+*.log
+logs/
+*.tmp
+*.temp
+*.cache
+
+# --- FIREBASE CLI ---
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebaserc
+
+# Exceto firebase.json (configuração de deploy), que pode ser versionado
+# (se não contiver dados sensíveis)
+# !firebase.json
+
+# --- BUILD / DIST ---
+dist/
+build/
+.cache/
+
+# --- VARIÁVEIS DE AMBIENTE ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

@@ -1,0 +1,223 @@
+/* =============================================================================
+   HM Finanças — variables.css
+   Variáveis CSS globais de design token.
+   Toda cor, espaçamento, sombra, radius e tipografia do sistema vem daqui.
+   Nunca usar valores "hardcoded" de cor ou espaçamento nos demais arquivos.
+   ============================================================================= */
+
+/* =============================================================================
+   TEMA ESCURO (padrão) — data-theme="dark"
+   Fundo preto/grafite com dourado vibrante como destaque principal.
+   ============================================================================= */
+:root,
+[data-theme="dark"] {
+
+  /* --- CORES PRINCIPAIS --- */
+  /* Dourado vibrante — cor de destaque principal do sistema */
+  --color-gold:           #C9A84C;
+  --color-gold-light:     #E8C46A;
+  --color-gold-dark:      #A07830;
+  --color-gold-muted:     rgba(201, 168, 76, 0.15);
+  --color-gold-border:    rgba(201, 168, 76, 0.30);
+  --color-gold-glow:      rgba(201, 168, 76, 0.12);
+
+  /* Verde — apenas para confirmações, sucesso e valores positivos */
+  --color-success:        #2ECC71;
+  --color-success-light:  #4AE886;
+  --color-success-dark:   #27AE60;
+  --color-success-muted:  rgba(46, 204, 113, 0.12);
+  --color-success-border: rgba(46, 204, 113, 0.30);
+
+  /* Vermelho — erros, alertas e valores negativos */
+  --color-danger:         #E74C3C;
+  --color-danger-light:   #FF6B5B;
+  --color-danger-dark:    #C0392B;
+  --color-danger-muted:   rgba(231, 76, 60, 0.12);
+  --color-danger-border:  rgba(231, 76, 60, 0.30);
+
+  /* Amarelo — avisos e alertas moderados */
+  --color-warning:        #F39C12;
+  --color-warning-light:  #F5B942;
+  --color-warning-dark:   #D68910;
+  --color-warning-muted:  rgba(243, 156, 18, 0.12);
+
+  /* Azul — informações e links secundários */
+  --color-info:           #3498DB;
+  --color-info-muted:     rgba(52, 152, 219, 0.12);
+
+  /* --- FUNDOS (do mais escuro para o mais claro) --- */
+  --bg-base:              #0A0A0A;   /* Fundo principal da página */
+  --bg-surface:           #111111;   /* Cards, painéis, modais */
+  --bg-elevated:          #1A1A1A;   /* Elementos elevados (dropdowns, tooltips) */
+  --bg-overlay:           #222222;   /* Sobreposições suaves */
+  --bg-hover:             #2A2A2A;   /* Estado hover em elementos interativos */
+  --bg-sidebar:           #0E0E0E;   /* Sidebar lateral */
+  --bg-header:            #0F0F0F;   /* Header superior */
+  --bg-input:             #181818;   /* Fundo de campos de texto */
+  --bg-skeleton:          #1E1E1E;   /* Placeholder de carregamento */
+
+  /* Overlay escuro para modais */
+  --bg-modal-overlay:     rgba(0, 0, 0, 0.75);
+
+  /* --- TEXTOS --- */
+  --text-primary:         #F5F5F5;   /* Texto principal (alto contraste) */
+  --text-secondary:       #A0A0A0;   /* Texto secundário / labels */
+  --text-muted:           #666666;   /* Texto desativado / placeholder */
+  --text-inverse:         #0A0A0A;   /* Texto sobre fundo dourado */
+  --text-gold:            #C9A84C;   /* Texto dourado */
+  --text-success:         #2ECC71;   /* Texto de valores positivos */
+  --text-danger:          #E74C3C;   /* Texto de valores negativos */
+
+  /* --- BORDAS --- */
+  --border-subtle:        rgba(255, 255, 255, 0.06);  /* Divisórias sutis */
+  --border-default:       rgba(255, 255, 255, 0.10);  /* Bordas padrão */
+  --border-strong:        rgba(255, 255, 255, 0.20);  /* Bordas com mais contraste */
+  --border-gold:          rgba(201, 168, 76, 0.40);   /* Bordas de destaque dourado */
+  --border-focus:         var(--color-gold);           /* Borda de foco em inputs */
+
+  /* --- SOMBRAS --- */
+  --shadow-sm:            0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md:            0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg:            0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-xl:            0 16px 48px rgba(0, 0, 0, 0.7);
+  --shadow-gold:          0 4px 20px rgba(201, 168, 76, 0.20);
+  --shadow-gold-lg:       0 8px 32px rgba(201, 168, 76, 0.30);
+  --shadow-inset:         inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  /* --- GRADIENTES --- */
+  --gradient-gold:        linear-gradient(135deg, #C9A84C 0%, #E8C46A 50%, #A07830 100%);
+  --gradient-gold-soft:   linear-gradient(135deg, rgba(201,168,76,0.15) 0%, rgba(201,168,76,0.05) 100%);
+  --gradient-surface:     linear-gradient(135deg, #1A1A1A 0%, #111111 100%);
+  --gradient-sidebar:     linear-gradient(180deg, #0E0E0E 0%, #080808 100%);
+  --gradient-dark-top:    linear-gradient(180deg, rgba(201,168,76,0.08) 0%, transparent 60%);
+
+  /* --- TIPOGRAFIA --- */
+  --font-sans:            'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display:         'Playfair Display', Georgia, serif;
+  --font-mono:            'Courier New', Courier, monospace;
+
+  /* Tamanhos de fonte (escala tipográfica) */
+  --text-xs:              0.75rem;   /* 12px */
+  --text-sm:              0.875rem;  /* 14px */
+  --text-base:            1rem;      /* 16px */
+  --text-md:              1.125rem;  /* 18px */
+  --text-lg:              1.25rem;   /* 20px */
+  --text-xl:              1.5rem;    /* 24px */
+  --text-2xl:             1.875rem;  /* 30px */
+  --text-3xl:             2.25rem;   /* 36px */
+  --text-4xl:             3rem;      /* 48px */
+
+  /* Pesos de fonte */
+  --font-light:           300;
+  --font-regular:         400;
+  --font-medium:          500;
+  --font-semibold:        600;
+  --font-bold:            700;
+
+  /* Alturas de linha */
+  --leading-tight:        1.2;
+  --leading-snug:         1.375;
+  --leading-normal:       1.5;
+  --leading-relaxed:      1.625;
+
+  /* --- ESPAÇAMENTOS --- */
+  --space-1:              0.25rem;   /* 4px  */
+  --space-2:              0.5rem;    /* 8px  */
+  --space-3:              0.75rem;   /* 12px */
+  --space-4:              1rem;      /* 16px */
+  --space-5:              1.25rem;   /* 20px */
+  --space-6:              1.5rem;    /* 24px */
+  --space-8:              2rem;      /* 32px */
+  --space-10:             2.5rem;    /* 40px */
+  --space-12:             3rem;      /* 48px */
+  --space-16:             4rem;      /* 64px */
+  --space-20:             5rem;      /* 80px */
+  --space-24:             6rem;      /* 96px */
+
+  /* --- BORDAS ARREDONDADAS --- */
+  --radius-sm:            4px;
+  --radius-md:            8px;
+  --radius-lg:            12px;
+  --radius-xl:            16px;
+  --radius-2xl:           24px;
+  --radius-full:          9999px;
+
+  /* --- TRANSIÇÕES --- */
+  --transition-fast:      150ms ease;
+  --transition-base:      250ms ease;
+  --transition-slow:      400ms ease;
+  --transition-bounce:    300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* --- LAYOUT — DIMENSÕES FIXAS --- */
+  --sidebar-width:        260px;
+  --sidebar-collapsed:    70px;
+  --header-height:        64px;
+  --content-max-width:    1280px;
+
+  /* --- Z-INDEX --- */
+  --z-base:               1;
+  --z-dropdown:           100;
+  --z-sticky:             200;
+  --z-overlay:            300;
+  --z-modal:              400;
+  --z-toast:              500;
+  --z-splash:             900;
+}
+
+
+/* =============================================================================
+   TEMA CLARO — data-theme="light"
+   Fundo branco/cinza claro com dourado suave como destaque.
+   Sobrescreve as variáveis necessárias; mantém as que não mudam.
+   ============================================================================= */
+[data-theme="light"] {
+
+  /* Dourado mais suave para o tema claro */
+  --color-gold:           #B8922A;
+  --color-gold-light:     #D4A843;
+  --color-gold-dark:      #8A6C1E;
+  --color-gold-muted:     rgba(184, 146, 42, 0.10);
+  --color-gold-border:    rgba(184, 146, 42, 0.25);
+  --color-gold-glow:      rgba(184, 146, 42, 0.08);
+
+  /* Fundos claros */
+  --bg-base:              #F4F4F6;
+  --bg-surface:           #FFFFFF;
+  --bg-elevated:          #FFFFFF;
+  --bg-overlay:           #ECECF0;
+  --bg-hover:             #E8E8EE;
+  --bg-sidebar:           #FFFFFF;
+  --bg-header:            #FFFFFF;
+  --bg-input:             #F8F8FA;
+  --bg-skeleton:          #EBEBEF;
+  --bg-modal-overlay:     rgba(0, 0, 0, 0.45);
+
+  /* Textos para tema claro */
+  --text-primary:         #111111;
+  --text-secondary:       #5A5A6A;
+  --text-muted:           #9A9AAA;
+  --text-inverse:         #FFFFFF;
+  --text-gold:            #B8922A;
+
+  /* Bordas para tema claro */
+  --border-subtle:        rgba(0, 0, 0, 0.06);
+  --border-default:       rgba(0, 0, 0, 0.10);
+  --border-strong:        rgba(0, 0, 0, 0.20);
+  --border-gold:          rgba(184, 146, 42, 0.35);
+
+  /* Sombras para tema claro */
+  --shadow-sm:            0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md:            0 4px 12px rgba(0, 0, 0, 0.10);
+  --shadow-lg:            0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl:            0 16px 48px rgba(0, 0, 0, 0.15);
+  --shadow-gold:          0 4px 20px rgba(184, 146, 42, 0.15);
+  --shadow-gold-lg:       0 8px 32px rgba(184, 146, 42, 0.25);
+  --shadow-inset:         inset 0 1px 0 rgba(255, 255, 255, 0.80);
+
+  /* Gradientes para tema claro */
+  --gradient-gold:        linear-gradient(135deg, #B8922A 0%, #D4A843 50%, #8A6C1E 100%);
+  --gradient-gold-soft:   linear-gradient(135deg, rgba(184,146,42,0.10) 0%, rgba(184,146,42,0.03) 100%);
+  --gradient-surface:     linear-gradient(135deg, #FFFFFF 0%, #F8F8FA 100%);
+  --gradient-sidebar:     linear-gradient(180deg, #FFFFFF 0%, #F8F8FA 100%);
+  --gradient-dark-top:    linear-gradient(180deg, rgba(184,146,42,0.05) 0%, transparent 60%);
+}
