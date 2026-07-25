@@ -27,7 +27,7 @@ const ROTAS = {
   dashboard: {
     titulo: 'Dashboard',
     icone:  'dashboard',
-    render: (container) => DashboardModule?.renderDashboard(container) || renderEmConstrucao(container, 'dashboard'),
+    render: (container) => DashboardModule?.renderDashboard ? DashboardModule.renderDashboard(container) : renderEmConstrucao(container, 'dashboard'),
     privada: true,
   },
   patrimonio: {
