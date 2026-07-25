@@ -1,126 +1,60 @@
 # Estrutura de Pastas — HM Finanças
 
-> Guia de referência para organização dos arquivos do projeto.
-> Sempre consultar este documento antes de criar arquivos novos.
-
----
-
-## Árvore Completa
+> Documento de referência rápida para localização de arquivos.
 
 ```
 HM-Financas/
 │
 ├── index.html                    ← Ponto de entrada único da aplicação
 ├── README.md                     ← Documentação pública do GitHub
-├── .gitignore                    ← Arquivos ignorados pelo Git
+├── .gitignore                    ← Arquivos ignorados pelo Git (ex: firebase-config.js)
+├── firestore.rules               ← Regras de segurança de banco de dados do Firebase Firestore
 │
-├── assets/                       ← Recursos estáticos
-│   ├── icons/                    ← Ícones SVG ou PNG customizados
-│   ├── images/                   ← Imagens gerais (screenshots, fundos)
-│   └── logos/                    ← Versões do logo HM Finanças
+├── docs/                         ← Documentação do projeto
+│   ├── briefing.md               ← Documento original com os requisitos do cliente
+│   ├── progresso-do-projeto.md   ← Checklist de módulos concluídos e pendentes
+│   └── estrutura-de-pastas.md    ← Este arquivo
 │
-├── styles/                       ← Todo o CSS do sistema
-│   ├── reset.css                 ← Reset moderno de estilos de navegador
-│   ├── variables.css             ← Design tokens (cores, fontes, espaçamentos)
-│   ├── global.css                ← Estilos base globais e utilitários (.text-info adicionado)
-│   ├── layout.css                ← Estrutura: splash, sidebar, header, main
-│   ├── components.css            ← Componentes reutilizáveis + componentes do Dashboard
-│   └── themes.css                ← Ajustes finos por tema (dark/light) e print
+├── assets/                       ← Arquivos estáticos
+│   ├── images/                   ← Ícones, logos, imagens de splash screen
+│   └── fonts/                    ← Fontes locais (se necessário)
 │
-├── scripts/                      ← Todo o JavaScript do sistema
-│   ├── app.js                    ← Orquestrador principal (tema, splash, layout)
-│   ├── router.js                 ← Roteamento por hash e renderização de telas
+├── styles/                       ← Estilos CSS (Vanilla)
+│   ├── reset.css                 ← Reset de margens, paddings, box-sizing
+│   ├── variables.css             ← Tokens de design (cores, tipografia, espaçamentos, z-index)
+│   ├── global.css                ← Estilos base, scrollbar, text-selection, utilitários
+│   ├── layout.css                ← Splash screen, app-layout, sidebar, header, main-content
+│   ├── components.css            ← Botões, cards, tabelas, forms, modais, badges
+│   └── themes.css                ← Variáveis específicas para temas dark/light, print
+│
+├── scripts/                      ← Lógica em JavaScript puro
+│   ├── app.js                    ← Inicialização, controle de tema, splash screen, setup layout
+│   ├── router.js                 ← Roteador vanilla SPA baseado em Hash (#/)
 │   │
-│   ├── utils/                    ← Utilitários genéricos (sem dependências externas)
-│   │   ├── helpers.js            ← DOM helpers, toasts, clipboard, debounce
-│   │   ├── formatters.js         ← Formatação de moeda, data, CPF, telefone
-│   │   └── validators.js         ← Validação de formulários e documentos
+│   ├── firebase/                 ← Integração com Firebase
+│   │   ├── firebase-config.js    ← (NÃO COMITADO) Credenciais e inicialização do SDK
+│   │   ├── firebase-init.js      ← Lógica de instanciar Auth, Firestore, etc
+│   │   ├── auth-service.js       ← Métodos de login, logout, observer de estado
+│   │   └── firestore-service.js  ← Métodos genéricos de CRUD no Firestore
 │   │
-│   ├── firebase/                 ← Integração exclusiva com Firebase
-│   │   ├── firebase-config.example.js  ← Template de configuração (commitar)
-│   │   ├── firebase-config.js          ← Configuração real (NÃO commitar — .gitignore)
-│   │   ├── firebase-init.js            ← Inicialização do app Firebase
-│   │   ├── auth-service.js             ← Login, logout, recuperação de senha
-│   │   └── firestore-service.js        ← CRUD genérico para todas as coleções
+│   ├── modules/                  ← Módulos da aplicação (cada pasta é uma tela/funcionalidade)
+│   │   ├── auth/
+│   │   │   └── index.js          ← ✅ Módulo 2A — Login, Cadastro, Recuperar Senha
+│   │   ├── dashboard/
+│   │   │   └── index.js          ← ✅ Módulo 3 — Dashboard com KPIs, movimentações, alertas
+│   │   ├── patrimonio/
+│   │   │   └── index.js          ← ✅ Módulo 4 — Visão consolidada (Ativos e Passivos)
+│   │   ├── hmcred/
+│   │   │   └── index.js          ← ✅ Módulo 5 — Crédito próprio (HMCRED)
+│   │   ├── dinheiro/             ← Módulo futuro
+│   │   ├── promissorias/         ← Módulo futuro
+│   │   ├── cartoes/              ← Módulo futuro
+│   │   ├── clientes/             ← Módulo futuro
+│   │   ├── cobrancas/            ← Módulo futuro
+│   │   └── configuracoes/        ← Módulo futuro
 │   │
-│   └── modules/                  ← Um diretório por módulo funcional
-│       ├── auth/
-│       │   └── index.js          ← ✅ Módulo 2A — Login, Cadastro, Recuperar Senha
-│       ├── dashboard/
-│       │   └── index.js          ← ✅ Módulo 3 — Dashboard com KPIs, movimentações, alertas
-│       ├── patrimonio/           ← 🔜 Módulo 4 (a implementar)
-│       ├── hmcred/               ← Módulo futuro
-│       ├── dinheiro/             ← Módulo futuro
-│       ├── promissorias/         ← Módulo futuro
-│       ├── cartoes/              ← Módulo futuro
-│       ├── clientes/             ← Módulo futuro
-│       ├── cobrancas/            ← Módulo futuro
-│       ├── notificacoes/         ← Módulo futuro
-│       └── configuracoes/        ← Módulo futuro
-│
-├── components/                   ← Templates HTML de componentes reutilizáveis
-│   ├── sidebar.html              ← Sidebar lateral (referência/template)
-│   ├── header.html               ← Header superior (referência/template)
-│   ├── cards.html                ← Templates de cards
-│   └── modals.html               ← Templates de modais
-│
-└── docs/                         ← Documentação interna do projeto
-    ├── manual-do-projeto.md      ← Manual oficial: stack, visual, regras
-    ├── progresso-do-projeto.md   ← Status e histórico de desenvolvimento
-    ├── estrutura-de-pastas.md    ← Este arquivo
-    └── regras-de-negocio-resumo.md ← Regras de negócio por módulo
+│   ├── utils/                    ← Funções auxiliares (Helpers)
+│   │   ├── formatters.js         ← Máscaras de CPF, moeda, telefone, datas
+│   │   ├── validators.js         ← Lógica de validação de formulários
+│   │   └── helpers.js            ← Toasts, manipulação genérica de DOM
 ```
-
----
-
-## Responsabilidade de Cada Área
-
-### `styles/`
-
-| Arquivo | O que vai lá |
-|---|---|
-| `reset.css` | Apenas o reset. Nunca adicionar estilos de componentes aqui. |
-| `variables.css` | Todos os tokens de design. Nunca usar cores hardcoded nos outros arquivos. |
-| `global.css` | Estilos de elementos HTML nativos (body, h1–h6, a, hr). Utilitários CSS simples. |
-| `layout.css` | Splash screen, grid do layout, sidebar, header, main. |
-| `components.css` | Todos os componentes de UI reutilizáveis. Novos componentes aqui. |
-| `themes.css` | Ajustes visuais finos que diferem entre dark e light. Estilos de print. |
-
-### `scripts/`
-
-| Arquivo | O que vai lá |
-|---|---|
-| `app.js` | Inicialização, controle de tema, splash screen, layout base. |
-| `router.js` | Mapa de rotas, navegação por hash, atualização do menu ativo. |
-| `utils/helpers.js` | Funções auxiliares genéricas sem dependência de outros módulos. |
-| `utils/formatters.js` | Toda função de formatação de dados para exibição. |
-| `utils/validators.js` | Toda função de validação de dados de entrada. |
-| `firebase/*.js` | Exclusivo para integração com Firebase. Sem lógica de UI. |
-| `modules/{nome}/` | Lógica específica de cada módulo funcional. |
-
----
-
-## Onde Criar Novos Arquivos
-
-| Tipo de arquivo | Onde colocar |
-|---|---|
-| Novo componente de UI (CSS) | Adicionar em `styles/components.css` |
-| Nova variável de design | Adicionar em `styles/variables.css` |
-| Nova função de formatação | Adicionar em `scripts/utils/formatters.js` |
-| Nova função de validação | Adicionar em `scripts/utils/validators.js` |
-| Novo módulo funcional | Criar pasta em `scripts/modules/{nome}/` |
-| Novo serviço Firebase | Criar arquivo em `scripts/firebase/` |
-| Novo template HTML | Adicionar em `components/` ou `pages/` |
-| Imagem ou logo | Colocar na subpasta correta em `assets/` |
-| Documentação interna | Adicionar ou atualizar arquivo em `docs/` |
-
----
-
-## Regras de Nomeação
-
-- **Arquivos**: `kebab-case` — ex: `auth-service.js`, `firestore-service.js`
-- **IDs HTML**: `kebab-case` — ex: `id="btn-login"`, `id="form-nova-promissoria"`
-- **Funções JS**: `camelCase` — ex: `formatarMoeda()`, `validarEmail()`
-- **Objetos/serviços JS**: `PascalCase` — ex: `AuthService`, `FirestoreService`
-- **Variáveis CSS**: `kebab-case` com prefixo semântico — ex: `--color-gold`, `--bg-surface`
-- **Classes CSS**: `kebab-case` — ex: `.stat-card`, `.btn-primary`, `.form-input`

@@ -20,6 +20,7 @@
 import { AuthModule } from './modules/auth/index.js';
 import { DashboardModule } from './modules/dashboard/index.js';
 import { PatrimonioModule } from './modules/patrimonio/index.js';
+import { HmcredModule } from './modules/hmcred/index.js';
 import { AuthService } from './firebase/auth-service.js';
 
 const APP_NAME = 'HM Finanças';
@@ -52,7 +53,7 @@ const ROTAS = {
   hmcred: {
     titulo: 'HMCRED',
     icone:  'local_atm',
-    render: renderEmConstrucao,
+    render: (container) => HmcredModule?.renderHmcred ? HmcredModule.renderHmcred(container) : renderEmConstrucao(container, 'hmcred'),
     privada: true,
   },
   promissorias: {
