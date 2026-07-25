@@ -47,25 +47,6 @@ export const FirestoreService = {
     return collection(db, 'usuarios', uid, colecaoNome);
   },
 
-  /**
-   * Retorna a referência a um documento específico dentro do espaço do usuário.
-   * Útil para documentos únicos (ex: patrimônio/resumo, hmcred/configuracao).
-   * Garante que o usuário só acessa dados sob seu próprio uid.
-   *
-   * @param {string} colecaoNome - Nome da coleção (ex: 'patrimônio')
-   * @param {string} docId - ID do documento (ex: 'resumo')
-   * @returns {import("firebase/firestore").DocumentReference | null}
-   */
-  docDoUsuario(colecaoNome, docId) {
-    const uid = auth?.currentUser?.uid;
-
-    if (!db)  { console.warn('[Firestore] Banco não inicializado.'); return null; }
-    if (!uid) { console.warn('[Firestore] Usuário não autenticado.'); return null; }
-
-    // Monta o caminho: usuarios/{uid}/{colecao}/{docId}
-    return doc(db, 'usuarios', uid, colecaoNome, docId);
-  },
-
   /* ─── CRIAR DOCUMENTO ────────────────────────────────────────────────── */
 
   /**
@@ -158,8 +139,9 @@ export const FirestoreService = {
 
   /**
    * Atualiza campos de um documento existente (merge parcial).
+   * Falha se o documento não existir.
    *
-   * @param {string} colecao
+   * @param {string} colecaoNome
    * @param {string} id - ID do documento
    * @param {Object} dados - Campos a atualizar
    * @returns {Promise<{ sucesso: boolean, erro?: string }>}
@@ -179,6 +161,36 @@ export const FirestoreService = {
     } catch (erro) {
       console.error(`[Firestore] Erro ao atualizar "${colecaoNome}/${id}":`, erro);
       return { sucesso: false, erro: 'Não foi possível atualizar os dados.' };
+    }
+  },
+
+  /* ─── SALVAR / DEFINIR DOCUMENTO ─────────────────────────────────────── */
+
+  /**
+   * Salva um documento com ID específico. Se não existir, é criado.
+   * Se já existir, é mesclado com os dados existentes (merge: true).
+   * Útil para configurações únicas, ex: usuarios/{uid}/patrimonio/resumo
+   *
+   * @param {string} colecaoNome
+   * @param {string} id - ID específico do documento
+   * @param {Object} dados - Dados a salvar
+   * @returns {Promise<{ sucesso: boolean, erro?: string }>}
+   */
+  async salvar(colecaoNome, id, dados) {
+    const ref = this.colecaoDoUsuario(colecaoNome);
+    if (!ref) return { sucesso: false, erro: 'Serviço indisponível.' };
+
+    try {
+      const docRef = doc(ref, id);
+      await setDoc(docRef, {
+        ...dados,
+        atualizadoEm: serverTimestamp(),
+      }, { merge: true });
+      return { sucesso: true };
+
+    } catch (erro) {
+      console.error(`[Firestore] Erro ao salvar "${colecaoNome}/${id}":`, erro);
+      return { sucesso: false, erro: 'Não foi possível salvar os dados.' };
     }
   },
 

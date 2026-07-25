@@ -1,72 +1,22 @@
-// =============================================================================
-// HM Finanças — Regras de Segurança do Firestore
-// =============================================================================
-//
-// PRINCÍPIO GERAL:
-//   Cada usuário autenticado só pode ler e escrever dados sob o seu próprio UID.
-//   Nenhum dado é acessível sem autenticação válida.
-//
-// ESTRUTURA DAS COLEÇÕES:
-//   /usuarios/{uid}/patrimonio/{document}    → resumo consolidado do patrimônio
-//   /usuarios/{uid}/hmcred/{document}        → config e subcoleção de operações
-//   /usuarios/{uid}/hmcred/configuracao/operacoes/{opId}  → operações de crédito
-//   /usuarios/{uid}/dinheiro/{document}      → contas (módulo futuro)
-//   /usuarios/{uid}/cartoes/{document}       → cartões (módulo futuro)
-//   /usuarios/{uid}/promissorias/{document}  → promissórias (módulo futuro)
-//   /usuarios/{uid}/clientes/{document}      → clientes (módulo futuro)
-//   /usuarios/{uid}/cobrancas/{document}     → cobranças (módulo futuro)
-//
-// COMO APLICAR:
-//   1. Acesse o Console do Firebase → Firestore Database → Rules
-//   2. Cole o conteúdo deste arquivo e publique
-//   (ou use: firebase deploy --only firestore:rules)
-//
-// =============================================================================
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // REGRA PADRÃO: Negar tudo
-    // Qualquer caminho não coberto pelas regras abaixo será negado por padrão.
-    // Esta é a postura de segurança mais segura: denegar explicitamente.
-    // ─────────────────────────────────────────────────────────────────────────
+    // Regra padrão: negar tudo que não estiver explicitamente permitido abaixo.
+    // Garante que nenhuma coleção seja pública acidentalmente.
     match /{document=**} {
-      // Nega leitura e escrita em qualquer caminho não especificado
       allow read, write: if false;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // DADOS DO USUÁRIO: /usuarios/{uid}/{document=**}
-    //
-    // Permite ao usuário autenticado ler e escrever APENAS nos dados
-    // que estão sob o seu próprio UID no caminho /usuarios/{uid}/...
-    //
-    // Condições obrigatórias:
-    //   1. request.auth != null       → o usuário deve estar autenticado
-    //   2. request.auth.uid == uid    → o UID da sessão deve corresponder ao
-    //                                   UID do documento (impede acesso cruzado)
-    //
-    // O wildcard {document=**} cobre recursivamente todos os documentos e
-    // subcoleções dentro de /usuarios/{uid}/, incluindo:
-    //   - /usuarios/{uid}/patrimonio/resumo
-    //   - /usuarios/{uid}/hmcred/configuracao
-    //   - /usuarios/{uid}/hmcred/configuracao/operacoes/{opId}
-    //   - /usuarios/{uid}/dinheiro/{contaId}
-    //   - /usuarios/{uid}/cartoes/{cartaoId}
-    //   - /usuarios/{uid}/promissorias/{id}
-    //   - /usuarios/{uid}/clientes/{id}
-    //   - (e qualquer subcoleção futura)
-    // ─────────────────────────────────────────────────────────────────────────
+    // Regras exclusivas para os dados dos usuários.
+    // A estrutura do banco deve ser: usuarios/{uid}/<subcolecoes>
     match /usuarios/{uid}/{document=**} {
-      // Permite leitura e escrita se e somente se:
-      //   - o usuário está autenticado (não é anônimo/sem sessão)
-      //   - o UID da sessão é o mesmo do caminho do documento
-      allow read, write: if request.auth != null
-                         && request.auth.uid == uid;
+      
+      // Permitir leitura e escrita apenas se o usuário estiver autenticado (request.auth != null)
+      // E se o UID do usuário autenticado for exatamente igual ao ID do documento 'uid' sendo acessado.
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      
     }
-
   }
 }
