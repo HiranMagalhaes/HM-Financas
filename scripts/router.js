@@ -21,6 +21,8 @@ import { AuthModule } from './modules/auth/index.js';
 import { DashboardModule } from './modules/dashboard/index.js';
 import { PatrimonioModule } from './modules/patrimonio/index.js';
 import { HmcredModule } from './modules/hmcred/index.js';
+import { DinheiroModule } from './modules/dinheiro/index.js';
+import { CartoesModule } from './modules/cartoes/index.js';
 import { AuthService } from './firebase/auth-service.js';
 
 const APP_NAME = 'HM Finanças';
@@ -41,13 +43,13 @@ const ROTAS = {
   dinheiro: {
     titulo: 'Dinheiro',
     icone:  'payments',
-    render: renderEmConstrucao,
+    render: (container) => DinheiroModule?.renderDinheiro ? DinheiroModule.renderDinheiro(container) : renderEmConstrucao(container, 'dinheiro'),
     privada: true,
   },
   cartoes: {
     titulo: 'Cartões',
     icone:  'credit_card',
-    render: renderEmConstrucao,
+    render: (container) => CartoesModule?.renderCartoes ? CartoesModule.renderCartoes(container) : renderEmConstrucao(container, 'cartoes'),
     privada: true,
   },
   hmcred: {

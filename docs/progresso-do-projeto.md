@@ -9,9 +9,9 @@
 
 | Campo | Valor |
 |---|---|
-| **Módulo Atual** | Módulo 6 — Dinheiro e Cartões |
-| **Status** | Início do planejamento do módulo de dinheiro em caixa, contas correntes e gerenciamento de faturas de cartões. |
-| **Última Atualização** | Módulos 4 (Patrimônio) e 5 (HMCRED) concluídos, integrados ao Firestore. |
+| **Módulo Atual** | Módulo 7 — Clientes e Cobranças |
+| **Status** | Início do planejamento da gestão de clientes e envio de cobranças. |
+| **Última Atualização** | Módulo 6 (Dinheiro e Cartões) concluído. |
 
 ## Histórico de Implementação
 
@@ -47,3 +47,8 @@
 - [x] Regras de limites, capital disponível e capital emprestado.
 - [x] Sincronização automática do valor total para o Patrimônio.
 - [x] Regras de Segurança criadas no Firebase (`firestore.rules`).
+
+### ✅ Módulo 6: Dinheiro e Cartões
+- [x] Módulo Dinheiro (caixa e contas bancárias) com sincronização para Patrimônio (Ativos).
+- [x] Módulo Cartões com gestão de faturas, limite e sincronização (Passivos).
+- [x] Reaproveitamento de componentes e responsividade.

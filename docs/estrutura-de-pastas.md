@@ -46,9 +46,11 @@ HM-Financas/
 │   │   │   └── index.js          ← ✅ Módulo 4 — Visão consolidada (Ativos e Passivos)
 │   │   ├── hmcred/
 │   │   │   └── index.js          ← ✅ Módulo 5 — Crédito próprio (HMCRED)
-│   │   ├── dinheiro/             ← Módulo futuro
+│   │   ├── dinheiro/
+│   │   │   └── index.js          ← ✅ Módulo 6 — Saldos em contas e dinheiro vivo
+│   │   ├── cartoes/
+│   │   │   └── index.js          ← ✅ Módulo 6 — Faturas e limites de cartões de crédito
 │   │   ├── promissorias/         ← Módulo futuro
-│   │   ├── cartoes/              ← Módulo futuro
 │   │   ├── clientes/             ← Módulo futuro
 │   │   ├── cobrancas/            ← Módulo futuro
 │   │   └── configuracoes/        ← Módulo futuro
