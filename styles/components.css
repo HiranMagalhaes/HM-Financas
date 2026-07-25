@@ -937,3 +937,106 @@
   gap: var(--space-3);
   align-items: flex-start;
 }
+
+
+/* ─── PATRIMÔNIO — ESTILOS ESPECÍFICOS ──────────────────────────────────── */
+
+/*
+  Skeleton card: exibido enquanto os dados do Firestore são carregados.
+  Usa animação de shimmer para indicar carregamento ativo.
+*/
+.skeleton-card {
+  min-height: 140px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 25%,
+    var(--bg-elevated) 50%,
+    var(--bg-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/*
+  Linha clicável da tabela de patrimônio.
+  Herda o estilo de hover da tabela e adiciona cursor pointer.
+*/
+.patrimonio-row {
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.patrimonio-row:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: -2px;
+}
+
+/* Layout do item de patrimônio: ícone + texto lado a lado */
+.patrimonio-item-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+
+/* ─── HMCRED — ESTILOS ESPECÍFICOS ──────────────────────────────────────── */
+
+/*
+  Card de configuração do HMCRED (limite total e capital disponível).
+  Layout diferenciado para separar a seção de configuração das operações.
+*/
+.hmcred-config-card {
+  border-color: var(--border-gold);
+  background: var(--gradient-gold-soft);
+}
+
+/*
+  Badge de status da operação HMCRED.
+  Cada status tem cor específica conforme identidade visual do projeto.
+*/
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+/* Em aberto: dourado (neutro/ativo) */
+.status-aberto  { background-color: var(--color-gold-muted);    color: var(--color-gold);    border: 1px solid var(--color-gold-border); }
+/* Pago: verde (positivo/encerrado) */
+.status-pago    { background-color: var(--color-success-muted); color: var(--color-success); border: 1px solid var(--color-success-border); }
+/* Atrasado: vermelho (problema/urgente) */
+.status-atrasado{ background-color: var(--color-danger-muted);  color: var(--color-danger);  border: 1px solid var(--color-danger-border); }
+
+/*
+  Linha de ação na tabela de operações HMCRED.
+  Exibe botões de ação (editar, marcar como pago, excluir) ao hover.
+*/
+.op-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.table tbody tr:hover .op-actions {
+  opacity: 1;
+}
+
+/* Em mobile, as ações ficam sempre visíveis */
+@media (max-width: 768px) {
+  .op-actions {
+    opacity: 1;
+  }
+}
+

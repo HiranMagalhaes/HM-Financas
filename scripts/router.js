@@ -17,9 +17,11 @@
    serão importadas e registradas aqui.
 ─────────────────────────────────────────────────────────────────────────── */
 
-import { AuthModule } from './modules/auth/index.js';
-import { DashboardModule } from './modules/dashboard/index.js';
-import { AuthService } from './firebase/auth-service.js';
+import { AuthModule }      from './modules/auth/index.js';
+import { DashboardModule }  from './modules/dashboard/index.js';
+import { PatrimonioModule } from './modules/patrimonio/index.js';
+import { HmcredModule }     from './modules/hmcred/index.js';
+import { AuthService }      from './firebase/auth-service.js';
 
 const APP_NAME = 'HM Finanças';
 
@@ -33,7 +35,7 @@ const ROTAS = {
   patrimonio: {
     titulo: 'Patrimônio',
     icone:  'account_balance_wallet',
-    render: renderEmConstrucao,
+    render: (container) => PatrimonioModule?.renderPatrimonio ? PatrimonioModule.renderPatrimonio(container) : renderEmConstrucao(container, 'patrimonio'),
     privada: true,
   },
   dinheiro: {
@@ -51,7 +53,7 @@ const ROTAS = {
   hmcred: {
     titulo: 'HMCRED',
     icone:  'local_atm',
-    render: renderEmConstrucao,
+    render: (container) => HmcredModule?.renderHmcred ? HmcredModule.renderHmcred(container) : renderEmConstrucao(container, 'hmcred'),
     privada: true,
   },
   promissorias: {

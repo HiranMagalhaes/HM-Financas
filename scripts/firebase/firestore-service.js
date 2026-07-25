@@ -47,6 +47,25 @@ export const FirestoreService = {
     return collection(db, 'usuarios', uid, colecaoNome);
   },
 
+  /**
+   * Retorna a referência a um documento específico dentro do espaço do usuário.
+   * Útil para documentos únicos (ex: patrimônio/resumo, hmcred/configuracao).
+   * Garante que o usuário só acessa dados sob seu próprio uid.
+   *
+   * @param {string} colecaoNome - Nome da coleção (ex: 'patrimônio')
+   * @param {string} docId - ID do documento (ex: 'resumo')
+   * @returns {import("firebase/firestore").DocumentReference | null}
+   */
+  docDoUsuario(colecaoNome, docId) {
+    const uid = auth?.currentUser?.uid;
+
+    if (!db)  { console.warn('[Firestore] Banco não inicializado.'); return null; }
+    if (!uid) { console.warn('[Firestore] Usuário não autenticado.'); return null; }
+
+    // Monta o caminho: usuarios/{uid}/{colecao}/{docId}
+    return doc(db, 'usuarios', uid, colecaoNome, docId);
+  },
+
   /* ─── CRIAR DOCUMENTO ────────────────────────────────────────────────── */
 
   /**
