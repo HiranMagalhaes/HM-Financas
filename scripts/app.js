@@ -87,6 +87,30 @@ export { alternarTema, aplicarTema };
 
 
 /* ───────────────────────────────────────────────────────────────────────────
+   CONTROLE DE VISIBILIDADE DE VALORES
+─────────────────────────────────────────────────────────────────────────── */
+
+const VISIBILITY_KEY = 'hm-values-hidden';
+
+function aplicarVisibilidadeValores(isOculto) {
+  if (isOculto) {
+    document.body.classList.add('hide-values');
+  } else {
+    document.body.classList.remove('hide-values');
+  }
+  localStorage.setItem(VISIBILITY_KEY, isOculto ? 'true' : 'false');
+}
+
+function obterVisibilidadeSalva() {
+  return localStorage.getItem(VISIBILITY_KEY) === 'true';
+}
+
+function alternarVisibilidadeValores() {
+  const isOculto = document.body.classList.contains('hide-values');
+  aplicarVisibilidadeValores(!isOculto);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
    SPLASH SCREEN
 ─────────────────────────────────────────────────────────────────────────── */
 
@@ -258,6 +282,13 @@ function renderizarLayoutBase(usuario) {
         </div>
 
         <div class="header-right">
+          <!-- Botão de alternância de visibilidade de valores -->
+          <button class="btn btn-ghost btn-icon" id="btn-toggle-values"
+                  aria-label="Alternar valores"
+                  title="Ocultar/Exibir valores sensíveis">
+            <span class="material-symbols-outlined" id="values-icon">visibility</span>
+          </button>
+
           <!-- Botão de alternância de tema -->
           <button class="btn btn-ghost btn-icon" id="btn-toggle-tema"
                   aria-label="Alternar tema"
@@ -356,6 +387,24 @@ function registrarEventosLayout() {
     });
   }
 
+  // --- Toggle de Visibilidade de Valores ---
+  const btnValues = document.getElementById('btn-toggle-values');
+  const valuesIcon = document.getElementById('values-icon');
+
+  if (btnValues) {
+    // Definir estado inicial do ícone
+    if (valuesIcon) {
+      valuesIcon.textContent = document.body.classList.contains('hide-values') ? 'visibility_off' : 'visibility';
+    }
+
+    btnValues.addEventListener('click', () => {
+      alternarVisibilidadeValores();
+      if (valuesIcon) {
+        valuesIcon.textContent = document.body.classList.contains('hide-values') ? 'visibility_off' : 'visibility';
+      }
+    });
+  }
+
   // --- Navegação pelos itens do menu ---
   const navItems = document.querySelectorAll('.nav-item[data-route]');
   navItems.forEach(item => {
@@ -390,6 +439,9 @@ async function inicializarApp() {
 
   // 1. Aplicar tema salvo (antes de qualquer renderização)
   aplicarTema(obterTemaSalvo());
+
+  // 1.b. Aplicar visibilidade de valores
+  aplicarVisibilidadeValores(obterVisibilidadeSalva());
 
   // 2. Registrar tempo de início para controlar duração mínima da splash
   const inicio = Date.now();

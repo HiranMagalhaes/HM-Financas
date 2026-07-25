@@ -9,10 +9,10 @@
 
 | Campo | Valor |
 |---|---|
-| **Módulo em andamento** | Módulo 2A — Concluído |
-| **Próximo módulo** | Módulo 2B — Dashboard Real |
-| **Última atualização** | 23/07/2026 |
-| **Versão** | v1.1.0 |
+| **Módulo em andamento** | Módulo 3 — Dashboard Concluído |
+| **Próximo módulo** | Módulo 4 — Patrimônio |
+| **Última atualização** | 25/07/2026 |
+| **Versão** | v1.2.0 |
 
 ---
 
@@ -49,7 +49,6 @@
 - [x] `scripts/firebase/auth-service.js` — login, logout, recuperação de senha
 - [x] `scripts/firebase/firestore-service.js` — CRUD genérico com listeners em tempo real
 - [x] Placeholders criados para todos os módulos JS em `scripts/modules/`
-- [x] Placeholders criados para páginas em `pages/`
 - [x] Placeholders criados para componentes em `components/`
 - [x] Pastas de assets criadas (`icons/`, `images/`, `logos/`)
 - [x] `docs/manual-do-projeto.md` — manual oficial do projeto
@@ -57,17 +56,6 @@
 - [x] `docs/estrutura-de-pastas.md` — guia de organização
 - [x] `docs/regras-de-negocio-resumo.md` — regras de negócio aprovadas
 - [x] `README.md` — documentação do GitHub profissional
-
-### O que NÃO foi implementado (escopo de módulos futuros)
-
-- [ ] Tela de login completa com formulário
-- [ ] Autenticação real com Firebase (conexão ativa)
-- [ ] Dashboard com dados reais
-- [ ] CRUD de qualquer entidade (clientes, promissórias, etc.)
-- [ ] Cálculo de promissórias e lucro
-- [ ] Integração com WhatsApp para cobranças
-- [ ] Sistema de relatórios
-- [ ] Configurações do sistema
 
 ---
 
@@ -84,34 +72,94 @@
 - [x] Redirecionamento dinâmico baseado em estado da sessão
 - [x] Proteção de rotas (redireciona para login se não autenticado)
 - [x] Logout funcional clicando no perfil do usuário
-- [x] Injeção de módulos via script tags no `index.html` (Refatorado)
-- [x] Refatoração completa da arquitetura para JavaScript nativo (ES Modules) com importações modulares do Firebase v10/v12
+- [x] Refatoração completa para JavaScript nativo (ES Modules) com Firebase v10
 
 ---
 
-## Módulo 2B — Dashboard (Dados Reais) 🔜
+## Módulo 3 — Dashboard ✅
+
+### O que foi feito
+
+- [x] **Módulo `scripts/modules/dashboard/index.js`** completamente reescrito e expandido
+  - Lógica do módulo exportada como `DashboardModule` (mesmo padrão do `AuthModule`)
+  - Saudação contextual ao usuário autenticado (Bom dia / Boa tarde / Boa noite)
+  - Nome amigável extraído do `displayName` ou e-mail do Firebase
+  - Dados mockados em objeto `mockDashboardData` bem estruturado e documentado
+    (campos comentados com referência ao Firestore para futura integração)
+
+- [x] **6 Cards de estatísticas (KPIs)** com classes `value-sensitive`:
+  - Saldo Disponível (com link para `/dinheiro`)
+  - Patrimônio Total (com link para `/patrimonio`)
+  - Em Promissórias — com lucro estimado (com link para `/promissorias`)
+  - Recebimentos no Mês
+  - Cobranças Pendentes — vencidas + a vencer em 7 dias (com link para `/cobrancas`)
+  - Operações HMCRED (com link para `/hmcred`)
+
+- [x] **Indicadores de variação** (% vs mês anterior) em cada card relevante
+
+- [x] **Lista de últimas 6 movimentações** com ícone colorido por tipo (receita / despesa / transferência)
+
+- [x] **Gráfico de barras CSS puro** (sem biblioteca) — evolução do patrimônio nos últimos 6 meses
+  - Barra do mês atual destacada em dourado
+  - Dados mockados, comentados para substituição por Firestore
+
+- [x] **Lista de alertas recentes** com ícones por tipo (vencido / a vencer / info)
+  - Data relativa (ex: "há 2 dias") via `formatarDataRelativa()`
+
+- [x] **6 Botões de ação rápida** via `shortcut-grid` — Nova Promissória, Novo Cliente, Registrar Pgto, Transferência, HMCRED, Promissórias
+
+- [x] **Card de modo demo** — aviso visual com badge "Modo Demo" no cabeçalho
+
+- [x] **Botão ocultar/exibir valores** — funciona via classe `.hide-values` no body (já implementado em app.js)
+  - Todos os valores monetários usam a classe `value-sensitive`
+
+- [x] **Navegação pelos cards clicáveis** — cards com `data-nav` navigam via hash
+
+- [x] **Acessibilidade** — atributos `aria-label`, `role`, `tabindex` nos elementos interativos
+
+- [x] **Responsividade** — layout em coluna única no mobile via `.dashboard-grid` (media query já em components.css)
+
+### Novos estilos adicionados em `styles/components.css`
+
+- `.dashboard-section-header` — cabeçalho de seção com título + link "Ver tudo"
+- `.dashboard-ver-mais` — link animado ao lado do título
+- `.dashboard-page-header` — variante do page-header para o dashboard
+- `.alerta-list`, `.alerta-item`, `.alerta-corpo`, `.alerta-texto` — lista de alertas
+- `.grafico-container`, `.grafico-barras`, `.grafico-col`, `.grafico-barra-wrap` — gráfico
+- `.grafico-barra`, `.grafico-barra.ativa`, `.grafico-label`, `.grafico-nota` — gráfico
+- `.card-demo`, `.demo-info` — card de aviso de modo demo
+
+### Nova utilidade adicionada em `styles/global.css`
+
+- `.text-info` — classe de cor para texto azul (usada nos ícones de HMCRED)
+
+---
+
+## Módulo 4 — Patrimônio 🔜 (Próximo)
 
 ### Escopo planejado
 
-- [ ] Integração real das métricas do Dashboard via Firestore
-- [ ] Listagem de atividades recentes
-- [ ] Criação de skeleton loaders para o Dashboard
-- [ ] Ajustes finos no módulo Dashboard
+- [ ] Cadastro e listagem de ativos patrimoniais (imóveis, veículos, investimentos, etc.)
+- [ ] Cálculo automático do patrimônio total
+- [ ] Integração real com Firestore (`coleção: patrimônio`)
+- [ ] Filtros por categoria
+- [ ] Edição e exclusão de ativos
+- [ ] Visualização de evolução histórica
 
 ---
 
-## Módulos Futuros (3–8)
+## Módulos Futuros (5–8)
 
-- Módulo 3: Patrimônio (HMCRED, Dinheiro, Cartões)
-- Módulo 4: Promissórias (CRUD, cálculos, status)
-- Módulo 5: Clientes e Cobranças (PIX + WhatsApp)
-- Módulo 6: Notificações automáticas
-- Módulo 7: Configurações e polimentos finais
+- Módulo 5: Promissórias (CRUD, cálculos, status, vencimento)
+- Módulo 6: Clientes e Cobranças (PIX + WhatsApp)
+- Módulo 7: Notificações automáticas
+- Módulo 8: Configurações e polimentos finais
 
 ---
 
 ## Próximos Passos Imediatos
 
-1. Fazer o commit com as mudanças do Módulo 2A
-2. Iniciar o Módulo 2B (Dashboard Real)
-3. Definir regras e campos exatos que farão parte do sumário financeiro no Firestore.
+1. ✅ Commit do Módulo 3 (Dashboard)
+2. Definir a estrutura de dados do Firestore para `patrimônio`
+3. Iniciar o Módulo 4 — Patrimônio
+4. Futuramente: substituir `mockDashboardData` por chamadas reais ao `FirestoreService`

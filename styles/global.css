@@ -166,6 +166,7 @@ img {
 .text-success { color: var(--color-success); }
 .text-danger  { color: var(--color-danger); }
 .text-warning { color: var(--color-warning); }
+.text-info    { color: var(--color-info); }
 .text-muted   { color: var(--text-muted); }
 .text-primary { color: var(--text-primary); }
 .text-secondary { color: var(--text-secondary); }

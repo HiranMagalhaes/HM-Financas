@@ -22,9 +22,9 @@ HM-Financas/
 ├── styles/                       ← Todo o CSS do sistema
 │   ├── reset.css                 ← Reset moderno de estilos de navegador
 │   ├── variables.css             ← Design tokens (cores, fontes, espaçamentos)
-│   ├── global.css                ← Estilos base globais e utilitários
+│   ├── global.css                ← Estilos base globais e utilitários (.text-info adicionado)
 │   ├── layout.css                ← Estrutura: splash, sidebar, header, main
-│   ├── components.css            ← Componentes reutilizáveis: botões, cards, etc.
+│   ├── components.css            ← Componentes reutilizáveis + componentes do Dashboard
 │   └── themes.css                ← Ajustes finos por tema (dark/light) e print
 │
 ├── scripts/                      ← Todo o JavaScript do sistema
@@ -44,27 +44,25 @@ HM-Financas/
 │   │   └── firestore-service.js        ← CRUD genérico para todas as coleções
 │   │
 │   └── modules/                  ← Um diretório por módulo funcional
-│       ├── auth/                 ← Módulo de autenticação (login, logout)
-│       ├── dashboard/            ← Módulo do painel principal
-│       ├── patrimonio/           ← Módulo de patrimônio geral
-│       ├── hmcred/               ← Módulo HMCRED (crédito próprio)
-│       ├── dinheiro/             ← Módulo de dinheiro em caixa
-│       ├── promissorias/         ← Módulo de promissórias e empréstimos
-│       ├── cartoes/              ← Módulo de cartões
-│       ├── clientes/             ← Módulo de gestão de clientes
-│       ├── cobrancas/            ← Módulo de cobranças (PIX + WhatsApp)
-│       ├── notificacoes/         ← Módulo de notificações automáticas
-│       └── configuracoes/        ← Módulo de configurações do sistema
+│       ├── auth/
+│       │   └── index.js          ← ✅ Módulo 2A — Login, Cadastro, Recuperar Senha
+│       ├── dashboard/
+│       │   └── index.js          ← ✅ Módulo 3 — Dashboard com KPIs, movimentações, alertas
+│       ├── patrimonio/           ← 🔜 Módulo 4 (a implementar)
+│       ├── hmcred/               ← Módulo futuro
+│       ├── dinheiro/             ← Módulo futuro
+│       ├── promissorias/         ← Módulo futuro
+│       ├── cartoes/              ← Módulo futuro
+│       ├── clientes/             ← Módulo futuro
+│       ├── cobrancas/            ← Módulo futuro
+│       ├── notificacoes/         ← Módulo futuro
+│       └── configuracoes/        ← Módulo futuro
 │
 ├── components/                   ← Templates HTML de componentes reutilizáveis
 │   ├── sidebar.html              ← Sidebar lateral (referência/template)
 │   ├── header.html               ← Header superior (referência/template)
 │   ├── cards.html                ← Templates de cards
 │   └── modals.html               ← Templates de modais
-│
-├── pages/                        ← Páginas HTML estruturais (referência)
-│   ├── login.html                ← Estrutura da tela de login
-│   └── dashboard.html            ← Estrutura da tela de dashboard
 │
 └── docs/                         ← Documentação interna do projeto
     ├── manual-do-projeto.md      ← Manual oficial: stack, visual, regras
