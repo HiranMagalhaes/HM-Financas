@@ -27,6 +27,7 @@ import { PromissoriasModule } from './modules/promissorias/index.js';
 import { ClientesModule } from './modules/clientes/index.js';
 import { CobrancasModule } from './modules/cobrancas/index.js';
 import { NotificacoesModule } from './modules/notificacoes/index.js';
+import { ConfiguracoesModule } from './modules/configuracoes/index.js';
 import { AuthService } from './firebase/auth-service.js';
 
 const APP_NAME = 'HM Finanças';
@@ -89,7 +90,7 @@ const ROTAS = {
   configuracoes: {
     titulo: 'Configurações',
     icone:  'settings',
-    render: renderEmConstrucao,
+    render: (container) => ConfiguracoesModule?.renderConfiguracoes ? ConfiguracoesModule.renderConfiguracoes(container) : renderEmConstrucao(container, 'configuracoes'),
     privada: true,
   },
   login: {

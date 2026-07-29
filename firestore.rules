@@ -22,6 +22,7 @@ service cloud.firestore {
     //   - cartoes_lista/{id}         → cada cartão de crédito (Módulo 6B)
     //   - clientes/{id}              → cadastro de clientes/devedores (Módulo 7)
     //   - cobrancas/{id}             → cobranças vinculadas aos clientes (Módulo 7)
+    //   - configuracoes/preferencias → preferências do usuário como tema (Módulo 10)
     //
     // A regra {document=**} usa wildcard recursivo e cobre TODAS as subcoleções
     // acima de forma automática. Não é necessário declarar cada uma separadamente.

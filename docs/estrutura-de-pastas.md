@@ -59,7 +59,8 @@ HM-Financas/
 │   │   │   └── index.js          ← ✅ Módulo 7B — Gestão de recebimentos, PIX e WhatsApp
 │   │   ├── notificacoes/         
 │   │   │   └── index.js          ← ✅ Módulo 9 — Agregação de alertas
-│   │   └── configuracoes/        ← Módulo futuro
+│   │   ├── configuracoes/        
+│   │   │   └── index.js          ← ✅ Módulo 10 — Preferências, Conta e Segurança
 │   │
 │   ├── utils/                    ← Funções auxiliares (Helpers)
 │   │   ├── formatters.js         ← Máscaras de CPF, moeda, telefone, datas
@@ -87,8 +88,8 @@ HM-Financas/
 │
 ├── cartoes/
 │   └── configuracao        → { limiteTotal, valorUsado, limiteDisponivel }
-└── cartoes_lista/
-    └── {id}                → { nome, limiteTotal, valorUsado, diaVencimento, criadoEm }
+├── configuracoes/
+│   └── preferencias        → { temaPreferido, ocultarValoresPorPadrao, notificacoesAtivas }
 ```
 
 ## Convenções Importantes

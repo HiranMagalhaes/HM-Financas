@@ -9,9 +9,9 @@
 
 | Campo | Valor |
 |---|---|
-| **Módulo Atual** | Módulo 9 — Notificações |
-| **Status** | Finalizado Módulo 9. Notificações e alertas globais implementados. |
-| **Última Atualização** | Módulo 9 (Notificações) concluído com agregação de vencimentos de cobranças e promissórias. |
+| **Módulo Atual** | Módulo 10 — Configurações |
+| **Status** | Finalizado Módulo 10. Todos os módulos centrais da aplicação estão completos! |
+| **Última Atualização** | Módulo 10 (Configurações) concluído com edição de perfil, segurança, exclusão e tema. |
 
 ## Histórico de Implementação
 
@@ -113,8 +113,19 @@
 
 ---
 
-## Próximos Passos — Módulo 10: Configurações
+### ✅ Módulo 10: Configurações
+- [x] Tela de "Dados da Conta" para alterar nome e solicitar redefinição de senha.
+- [x] Sincronização e backup de preferências visuais (Tema e Ocultar Valores) no Firestore.
+- [x] Toggle de Notificações Internas.
+- [x] Aba de "Segurança" com função de Logout e Exclusão total da conta.
+- [x] Aba "Sobre o App".
+- [x] Proteção das configurações via `firestore.rules`.
+
+---
+
+## Próximos Passos — Módulo 11: PWA (Progressive Web App)
 
 ### Sugestões para a implementação:
-- Ajustes de perfil do usuário.
-- Preferências de notificações e sistema.
+- Adicionar `manifest.json`.
+- Implementar Service Worker para cache básico offline e instalação na tela inicial (Android/iOS).
+- Revisão final de SEO e metatags.

@@ -111,6 +111,9 @@ function alternarVisibilidadeValores() {
   aplicarVisibilidadeValores(!isOculto);
 }
 
+// Exporta as funções de visibilidade para uso em Configurações e globais
+export { aplicarVisibilidadeValores, alternarVisibilidadeValores, obterVisibilidadeSalva };
+
 /* ───────────────────────────────────────────────────────────────────────────
    SPLASH SCREEN
 ─────────────────────────────────────────────────────────────────────────── */
