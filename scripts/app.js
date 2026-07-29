@@ -16,6 +16,7 @@
 import { Router } from './router.js';
 import { inicializarFirebase } from './firebase/firebase-init.js';
 import { AuthService } from './firebase/auth-service.js';
+import { NotificacoesModule } from './modules/notificacoes/index.js';
 
 /* ───────────────────────────────────────────────────────────────────────────
    CONSTANTES GLOBAIS DA APLICAÇÃO
@@ -462,6 +463,7 @@ async function inicializarApp() {
     // 5. Renderizar o layout adequado
     if (usuario) {
       renderizarLayoutBase(usuario);
+      NotificacoesModule.iniciarMonitoramentoBadges();
     } else {
       renderizarLayoutAuth();
     }

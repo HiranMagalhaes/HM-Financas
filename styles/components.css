@@ -939,7 +939,173 @@
 }
 
 /* ─── CARTÕES DE CRÉDITO (Módulo Cartões) ───────────────────────────────── */
+/*
+  Componente visual de cartão físico estilizado.
+  Usado no módulo Cartões para dar aparência de cartão bancário premium.
+  Mantém a identidade visual preto/grafite + dourado do sistema.
+*/
 
+/* Container que agrupa o cartão visual + painel de controle abaixo */
+.credit-card-wrapper {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  transition:
+    transform var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.credit-card-wrapper:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl), var(--shadow-gold);
+}
+
+/* Face do cartão físico — gradiente escuro premium */
+.credit-card-visual {
+  position: relative;
+  padding: var(--space-6);
+  background: linear-gradient(
+    135deg,
+    #1a1a2e 0%,
+    #16213e 35%,
+    #0f3460 70%,
+    #1a1a2e 100%
+  );
+  min-height: 190px;
+  overflow: hidden;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  border: 1px solid var(--border-gold);
+  border-bottom: none;
+}
+
+/* Brilho sutil no topo do cartão */
+.credit-card-visual::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Reflexo dourado sutil no canto superior direito */
+.credit-card-visual::after {
+  content: '';
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(201,168,76,0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Chip de contato decorativo (simulação) */
+.cc-chip {
+  width: 44px;
+  height: 34px;
+  background: linear-gradient(135deg, #C9A84C, #E8C46A, #A07830);
+  border-radius: 6px;
+  margin-bottom: var(--space-4);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* Linha interna do chip */
+.cc-chip-inner {
+  width: 70%;
+  height: 2px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 1px;
+  position: relative;
+}
+.cc-chip-inner::before,
+.cc-chip-inner::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 1px;
+}
+.cc-chip-inner::before { top: -5px; }
+.cc-chip-inner::after  { top:  5px; }
+
+/* Linha superior: issuer + data de vencimento */
+.cc-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+
+.cc-issuer {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-gold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cc-venc {
+  font-size: var(--text-xs);
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.04em;
+}
+
+/* Número decorativo do cartão */
+.cc-number {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.cc-number span {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: var(--font-bold);
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.12em;
+}
+
+/* Linha inferior: portador + limite */
+.cc-bottom-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.cc-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: rgba(255,255,255,0.4);
+  margin: 0 0 2px;
+}
+
+.cc-value {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: rgba(255,255,255,0.85);
+  margin: 0;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* Logo decorativo no canto inferior direito do cartão */
+.cc-logo-area {
+  position: absolute;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  color: var(--color-gold);
+  opacity: 0.6;
+}
+
+/* Card antigo — mantido para compatibilidade retroativa, não será usado no novo módulo */
 .credit-card-item {
   border: 1px solid var(--border-gold) !important;
   background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(204, 153, 51, 0.05) 100%);
@@ -950,9 +1116,9 @@
 .credit-card-item::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   width: 4px;
   height: 100%;
   background: var(--gradient-gold);
 }
+

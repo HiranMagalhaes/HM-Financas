@@ -10,11 +10,27 @@ service cloud.firestore {
     }
 
     // Regras exclusivas para os dados dos usuários.
-    // A estrutura do banco deve ser: usuarios/{uid}/<subcolecoes>
+    // A estrutura do banco deve ser: usuarios/{uid}/<subcoleções>
+    //
+    // Coleções atualmente em uso:
+    //   - patrimonio/resumo          → resumo consolidado (Módulo 4)
+    //   - hmcred/configuracao        → capital base do HMCRED (Módulo 5)
+    //   - hmcred_operacoes/{id}      → operações de crédito (Módulo 5)
+    //   - dinheiro/configuracao      → saldo total consolidado (Módulo 6A)
+    //   - dinheiro_contas/{id}       → cada conta bancária/caixa (Módulo 6A)
+    //   - cartoes/configuracao       → totais de limite e fatura (Módulo 6B)
+    //   - cartoes_lista/{id}         → cada cartão de crédito (Módulo 6B)
+    //   - clientes/{id}              → cadastro de clientes/devedores (Módulo 7)
+    //   - cobrancas/{id}             → cobranças vinculadas aos clientes (Módulo 7)
+    //
+    // A regra {document=**} usa wildcard recursivo e cobre TODAS as subcoleções
+    // acima de forma automática. Não é necessário declarar cada uma separadamente.
     match /usuarios/{uid}/{document=**} {
       
-      // Permitir leitura e escrita apenas se o usuário estiver autenticado (request.auth != null)
-      // E se o UID do usuário autenticado for exatamente igual ao ID do documento 'uid' sendo acessado.
+      // Permitir leitura e escrita SOMENTE se:
+      //   1. O usuário estiver autenticado (request.auth != null)
+      //   2. O UID autenticado for exatamente igual ao UID do documento acessado
+      // Isso garante que cada usuário só acessa seus próprios dados.
       allow read, write: if request.auth != null && request.auth.uid == uid;
       
     }

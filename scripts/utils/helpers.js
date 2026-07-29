@@ -178,6 +178,39 @@ function debounce(fn, delay = 300) {
   };
 }
 
+/**
+ * Calcula o status real de uma data de vencimento (atrasada, hoje, amanha, pendente, ou status final como paga/recebida).
+ * @param {string} dataVencimento - Data no formato 'AAAA-MM-DD'
+ * @param {string} statusAtual - Status atual salvo no banco (ex: 'pendente', 'paga')
+ * @param {string[]} statusResolvidos - Lista de status que não mudam (ex: ['paga', 'recebida'])
+ * @returns {'atrasada'|'hoje'|'amanha'|'pendente'|string}
+ */
+function calcularStatusVencimento(dataVencimento, statusAtual, statusResolvidos = ['paga', 'recebida']) {
+  if (statusResolvidos.includes(statusAtual)) {
+    return statusAtual;
+  }
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const partes = dataVencimento.split('-');
+  const vencimento = new Date(partes[0], partes[1] - 1, partes[2]);
+
+  // Diferença em ms e depois dias
+  const diffTime = vencimento.getTime() - hoje.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return 'atrasada';
+  } else if (diffDays === 0) {
+    return 'hoje';
+  } else if (diffDays === 1) {
+    return 'amanha';
+  }
+
+  return 'pendente';
+}
+
 export {
   $,
   $q,
@@ -188,4 +221,5 @@ export {
   estaVazio,
   copiarParaClipboard,
   debounce,
+  calcularStatusVencimento,
 };

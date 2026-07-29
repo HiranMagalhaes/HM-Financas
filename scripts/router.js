@@ -23,6 +23,10 @@ import { PatrimonioModule } from './modules/patrimonio/index.js';
 import { HmcredModule } from './modules/hmcred/index.js';
 import { DinheiroModule } from './modules/dinheiro/index.js';
 import { CartoesModule } from './modules/cartoes/index.js';
+import { PromissoriasModule } from './modules/promissorias/index.js';
+import { ClientesModule } from './modules/clientes/index.js';
+import { CobrancasModule } from './modules/cobrancas/index.js';
+import { NotificacoesModule } from './modules/notificacoes/index.js';
 import { AuthService } from './firebase/auth-service.js';
 
 const APP_NAME = 'HM Finanças';
@@ -61,25 +65,25 @@ const ROTAS = {
   promissorias: {
     titulo: 'Promissórias',
     icone:  'receipt_long',
-    render: renderEmConstrucao,
+    render: (container) => PromissoriasModule?.renderPromissorias ? PromissoriasModule.renderPromissorias(container) : renderEmConstrucao(container, 'promissorias'),
     privada: true,
   },
   clientes: {
     titulo: 'Clientes',
     icone:  'group',
-    render: renderEmConstrucao,
+    render: (container) => ClientesModule?.renderClientes ? ClientesModule.renderClientes(container) : renderEmConstrucao(container, 'clientes'),
     privada: true,
   },
   cobrancas: {
     titulo: 'Cobranças',
     icone:  'request_quote',
-    render: renderEmConstrucao,
+    render: (container) => CobrancasModule?.renderCobrancas ? CobrancasModule.renderCobrancas(container) : renderEmConstrucao(container, 'cobrancas'),
     privada: true,
   },
   notificacoes: {
     titulo: 'Notificações',
     icone:  'notifications',
-    render: renderEmConstrucao,
+    render: (container) => NotificacoesModule?.renderNotificacoes ? NotificacoesModule.renderNotificacoes(container) : renderEmConstrucao(container, 'notificacoes'),
     privada: true,
   },
   configuracoes: {

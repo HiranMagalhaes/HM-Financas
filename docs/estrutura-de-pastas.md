@@ -11,9 +11,10 @@ HM-Financas/
 ├── firestore.rules               ← Regras de segurança de banco de dados do Firebase Firestore
 │
 ├── docs/                         ← Documentação do projeto
-│   ├── briefing.md               ← Documento original com os requisitos do cliente
 │   ├── progresso-do-projeto.md   ← Checklist de módulos concluídos e pendentes
-│   └── estrutura-de-pastas.md    ← Este arquivo
+│   ├── estrutura-de-pastas.md    ← Este arquivo
+│   ├── manual-do-projeto.md      ← Manual técnico e de negócio do sistema
+│   └── regras-de-negocio-resumo.md ← Regras de negócio resumidas por módulo
 │
 ├── assets/                       ← Arquivos estáticos
 │   ├── images/                   ← Ícones, logos, imagens de splash screen
@@ -24,7 +25,7 @@ HM-Financas/
 │   ├── variables.css             ← Tokens de design (cores, tipografia, espaçamentos, z-index)
 │   ├── global.css                ← Estilos base, scrollbar, text-selection, utilitários
 │   ├── layout.css                ← Splash screen, app-layout, sidebar, header, main-content
-│   ├── components.css            ← Botões, cards, tabelas, forms, modais, badges
+│   ├── components.css            ← Botões, cards, tabelas, forms, modais, badges, cartão físico
 │   └── themes.css                ← Variáveis específicas para temas dark/light, print
 │
 ├── scripts/                      ← Lógica em JavaScript puro
@@ -39,7 +40,7 @@ HM-Financas/
 │   │
 │   ├── modules/                  ← Módulos da aplicação (cada pasta é uma tela/funcionalidade)
 │   │   ├── auth/
-│   │   │   └── index.js          ← ✅ Módulo 2A — Login, Cadastro, Recuperar Senha
+│   │   │   └── index.js          ← ✅ Módulo 1 — Login, Cadastro, Recuperar Senha
 │   │   ├── dashboard/
 │   │   │   └── index.js          ← ✅ Módulo 3 — Dashboard com KPIs, movimentações, alertas
 │   │   ├── patrimonio/
@@ -47,12 +48,17 @@ HM-Financas/
 │   │   ├── hmcred/
 │   │   │   └── index.js          ← ✅ Módulo 5 — Crédito próprio (HMCRED)
 │   │   ├── dinheiro/
-│   │   │   └── index.js          ← ✅ Módulo 6 — Saldos em contas e dinheiro vivo
+│   │   │   └── index.js          ← ✅ Módulo 6A — Saldos: CRUD completo de contas + lançamentos
 │   │   ├── cartoes/
-│   │   │   └── index.js          ← ✅ Módulo 6 — Faturas e limites de cartões de crédito
-│   │   ├── promissorias/         ← Módulo futuro
-│   │   ├── clientes/             ← Módulo futuro
-│   │   ├── cobrancas/            ← Módulo futuro
+│   │   │   └── index.js          ← ✅ Módulo 6B — Cartões: CRUD completo + visual de cartão físico
+│   │   ├── promissorias/         
+│   │   │   └── index.js          ← ✅ Módulo 8 — Gestão de promissórias
+│   │   ├── clientes/
+│   │   │   └── index.js          ← ✅ Módulo 7A — CRUD de clientes e total em aberto
+│   │   ├── cobrancas/
+│   │   │   └── index.js          ← ✅ Módulo 7B — Gestão de recebimentos, PIX e WhatsApp
+│   │   ├── notificacoes/         
+│   │   │   └── index.js          ← ✅ Módulo 9 — Agregação de alertas
 │   │   └── configuracoes/        ← Módulo futuro
 │   │
 │   ├── utils/                    ← Funções auxiliares (Helpers)
@@ -60,3 +66,35 @@ HM-Financas/
 │   │   ├── validators.js         ← Lógica de validação de formulários
 │   │   └── helpers.js            ← Toasts, manipulação genérica de DOM
 ```
+
+## Estrutura de Dados no Firestore
+
+```
+/usuarios/{uid}/
+│
+├── patrimonio/
+│   └── resumo              → { hmcred, dinheiro, cartoes, atualizadoEm }
+│
+├── hmcred/
+│   └── configuracao        → { limiteTotal, capitalDisponivel }
+├── hmcred_operacoes/
+│   └── {id}                → { destino, valorConcedido, valorReceber, taxaJuros, status, ... }
+│
+├── dinheiro/
+│   └── configuracao        → { saldoTotal }
+├── dinheiro_contas/
+│   └── {id}                → { nome, tipo, saldo, criadoEm, atualizadoEm }
+│
+├── cartoes/
+│   └── configuracao        → { limiteTotal, valorUsado, limiteDisponivel }
+└── cartoes_lista/
+    └── {id}                → { nome, limiteTotal, valorUsado, diaVencimento, criadoEm }
+```
+
+## Convenções Importantes
+
+- **Coleções**: Sempre em snake_case, sem acento (ex: `dinheiro_contas`, `cartoes_lista`)
+- **Documentos únicos por módulo**: Sempre com ID `configuracao` (ex: `dinheiro/configuracao`)
+- **FirestoreService**: Todas as coleções ficam sob `/usuarios/{uid}/` — o serviço resolve isso automaticamente
+- **Listener em tempo real**: Todos os módulos CRUD usam `FirestoreService.escutar()` (onSnapshot)
+- **Sincronização de Patrimônio**: Sempre via `salvar('patrimonio', 'resumo', {...})` com merge

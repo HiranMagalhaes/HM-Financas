@@ -109,10 +109,11 @@ function renderizarTelaPrincipal(container, resumo) {
   const totalHmcred = resumo.hmcred || 0;
   const totalDinheiro = resumo.dinheiro || 0;
   const totalCartoes = resumo.cartoes || 0;
+  const totalPromissorias = resumo.promissorias || 0;
   
   // Total consolidado (Ativos - Passivos). 
-  // Dinheiro e HMCRED são ativos (positivos). Cartões (fatura) são passivos (negativos).
-  const patrimonioTotal = totalHmcred + totalDinheiro - totalCartoes;
+  // Dinheiro, HMCRED e Promissórias são ativos (positivos). Cartões (fatura) são passivos (negativos).
+  const patrimonioTotal = totalHmcred + totalDinheiro + totalPromissorias - totalCartoes;
 
   container.innerHTML = `
     <div class="page-header">
@@ -145,6 +146,14 @@ function renderizarTelaPrincipal(container, resumo) {
         icone: 'payments',
         classeIcone: 'background-color: var(--color-success-muted); color: var(--color-success);',
         rota: 'dinheiro'
+      })}
+
+      ${gerarStatCard({
+        label: 'Promissórias (Ativas)',
+        valor: formatarMoeda(totalPromissorias),
+        icone: 'receipt_long',
+        classeIcone: 'background-color: var(--bg-hover); color: var(--text-primary);',
+        rota: 'promissorias'
       })}
 
       ${gerarStatCard({
@@ -193,6 +202,16 @@ function renderizarTelaPrincipal(container, resumo) {
                   </div>
                 </td>
                 <td class="text-right value-sensitive text-success">${formatarMoeda(totalDinheiro)}</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-success">Ativo</span></td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: var(--space-2);">
+                    <span class="material-symbols-outlined text-primary icon-sm">receipt_long</span>
+                    Promissórias em Aberto
+                  </div>
+                </td>
+                <td class="text-right value-sensitive text-primary">${formatarMoeda(totalPromissorias)}</td>
               </tr>
               <tr>
                 <td><span class="badge badge-danger">Passivo</span></td>

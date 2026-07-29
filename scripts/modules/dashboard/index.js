@@ -25,7 +25,9 @@
 'use strict';
 
 import { AuthService } from '../../firebase/auth-service.js';
+import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, formatarDataRelativa } from '../../utils/formatters.js';
+import { NotificacoesModule } from '../notificacoes/index.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    DADOS MOCKADOS
@@ -79,13 +81,8 @@ const mockDashboardData = {
     { id: 6, tipo: 'despesa',      descricao: 'Taxa administrativa',           valor: 85.00,   data: '2026-07-19' },
   ],
 
-  // Alertas recentes (Firestore: coleção 'alertas', ordenada por data desc, limit 4)
-  alertas: [
-    { id: 1, tipo: 'vencido',   texto: 'Promissória de R. Lima venceu há 2 dias',    data: '2026-07-22' },
-    { id: 2, tipo: 'avencer',   texto: 'Promissória de F. Souza vence em 3 dias',    data: '2026-07-28' },
-    { id: 3, tipo: 'avencer',   texto: 'Promissória de A. Neto vence em 5 dias',     data: '2026-07-30' },
-    { id: 4, tipo: 'info',      texto: 'Novo cliente cadastrado: Joaquim Ferreira',  data: '2026-07-24' },
-  ],
+  // Alertas recentes (Substituído pelo NotificacoesModule)
+  alertas: [],
 };
 
 
@@ -167,16 +164,15 @@ function gerarItemMovimentacao(tx) {
 }
 
 /**
- * Gera o HTML de um item de alerta recente.
+ * Gera o HTML de um item de alerta consolidado (sem nomes).
  *
  * @param {object} alerta
  * @param {string} alerta.tipo   - 'vencido' | 'avencer' | 'info'
  * @param {string} alerta.texto  - Mensagem do alerta
- * @param {string} alerta.data   - Data do alerta
+ * @param {string} alerta.sub    - Subtexto (ex: valor formatado)
  * @returns {string} HTML do item de alerta
  */
 function gerarItemAlerta(alerta) {
-  // Configuração visual por tipo de alerta
   const configTipo = {
     vencido: { icone: 'error',        cor: 'text-danger',  label: 'Vencido' },
     avencer: { icone: 'schedule',     cor: 'text-warning', label: 'A vencer' },
@@ -185,11 +181,11 @@ function gerarItemAlerta(alerta) {
   const config = configTipo[alerta.tipo] || configTipo.info;
 
   return `
-    <div class="alerta-item">
+    <div class="alerta-item" style="padding: var(--space-3) 0; border-bottom: 1px solid var(--border-default); display: flex; align-items: center; gap: var(--space-3);">
       <span class="material-symbols-outlined ${config.cor} icon-sm" aria-hidden="true">${config.icone}</span>
-      <div class="alerta-corpo">
-        <p class="alerta-texto">${alerta.texto}</p>
-        <p class="tx-date">${formatarDataRelativa(alerta.data)}</p>
+      <div class="alerta-corpo" style="flex: 1;">
+        <p class="alerta-texto" style="margin: 0; font-size: var(--text-sm); font-weight: var(--font-medium);">${alerta.texto}</p>
+        <p class="tx-date" style="margin: 0; font-size: var(--text-xs); color: var(--text-muted);">${alerta.sub}</p>
       </div>
     </div>
   `;
@@ -269,6 +265,9 @@ function gerarAtalho(icone, label, rota, cor = '') {
    MÓDULO EXPORTADO
    O roteador (router.js) chama DashboardModule.renderDashboard(container).
 ───────────────────────────────────────────────────────────────────────────── */
+
+let handleNotificacoesAtualizadas = null;
+
 export const DashboardModule = {
 
   /**
@@ -279,7 +278,32 @@ export const DashboardModule = {
    * PARA ALTERAR: edite as seções marcadas com comentários específicos.
    * Cada bloco HTML é gerado por uma função auxiliar acima.
    */
-  renderDashboard(container) {
+  async renderDashboard(container) {
+    // Tela de carregamento enquanto busca do Firestore
+    container.innerHTML = `
+      <div class="empty-state" style="padding: var(--space-16);">
+        <span class="material-symbols-outlined empty-state-icon" style="animation: spin 1s linear infinite;">sync</span>
+        <p style="color: var(--text-muted); margin-top: var(--space-4);">Carregando dashboard...</p>
+      </div>
+    `;
+
+    // Buscar dados reais de Promissórias
+    const promissoriasRes = await FirestoreService.listar('promissorias');
+    if (promissoriasRes.sucesso) {
+      let promissoriasAtivas = 0;
+      let lucroEstimado = 0;
+      
+      promissoriasRes.dados.forEach(p => {
+        if (p.status !== 'recebida') {
+          promissoriasAtivas += (p.valorInvestido || 0);
+          lucroEstimado += (p.lucro || 0);
+        }
+      });
+      
+      mockDashboardData.promissoriasAtivas = promissoriasAtivas;
+      mockDashboardData.lucroEstimado = lucroEstimado;
+    }
+
     // Obter dados do usuário autenticado via AuthService
     const usuario = AuthService.obterUsuarioAtual();
     const email = usuario?.email || '';
@@ -301,10 +325,32 @@ export const DashboardModule = {
       ? mockDashboardData.movimentacoesRecentes.map(gerarItemMovimentacao).join('')
       : '<p class="text-muted text-sm" style="padding: var(--space-4) 0;">Nenhuma movimentação recente.</p>';
 
-    // Gerar HTML dos alertas
-    const alertasHtml = mockDashboardData.alertas.length > 0
-      ? mockDashboardData.alertas.map(gerarItemAlerta).join('')
-      : '<p class="text-muted text-sm">Nenhum alerta no momento.</p>';
+    // Obter resumo de notificações
+    const resumoNotificacoes = NotificacoesModule.obterResumoDashboard();
+    let alertasHtml = '';
+
+    if (resumoNotificacoes.carregando) {
+      alertasHtml = '<p class="text-muted text-sm">Carregando alertas...</p>';
+    } else if (resumoNotificacoes.totalPendencias === 0) {
+      alertasHtml = '<p class="text-success text-sm"><span class="material-symbols-outlined icon-sm" style="vertical-align: middle;">check_circle</span> Tudo em dia!</p>';
+    } else {
+      const listaAlertasConsolidados = [];
+      if (resumoNotificacoes.vencidas.quantidade > 0) {
+        listaAlertasConsolidados.push({
+          tipo: 'vencido',
+          texto: `${resumoNotificacoes.vencidas.quantidade} pendência${resumoNotificacoes.vencidas.quantidade > 1 ? 's' : ''} em atraso`,
+          sub: `Valor total: ${formatarMoeda(resumoNotificacoes.vencidas.valor)}`
+        });
+      }
+      if (resumoNotificacoes.aVencer.quantidade > 0) {
+        listaAlertasConsolidados.push({
+          tipo: 'avencer',
+          texto: `${resumoNotificacoes.aVencer.quantidade} pendência${resumoNotificacoes.aVencer.quantidade > 1 ? 's' : ''} vencendo hoje/amanhã`,
+          sub: `Valor total: ${formatarMoeda(resumoNotificacoes.aVencer.valor)}`
+        });
+      }
+      alertasHtml = listaAlertasConsolidados.map(gerarItemAlerta).join('');
+    }
 
     // Variações formatadas para os cards
     const varSaldo = mockDashboardData.variacoes.saldo;
@@ -312,12 +358,17 @@ export const DashboardModule = {
     const varPromissorias = mockDashboardData.variacoes.promissorias;
     const varRecebimentos = mockDashboardData.variacoes.recebimentos;
 
-    // Montar texto de subtítulo das cobranças
-    const totalCobrancas = mockDashboardData.cobrancas.vencidas + mockDashboardData.cobrancas.aVencer7dias;
+    // Atualizar dados de cobranças pendentes baseando-se nas notificações, se disponíveis
+    let qteCobrancasVencidas = mockDashboardData.cobrancas.vencidas;
+    let qteCobrancasAVencer = mockDashboardData.cobrancas.aVencer7dias;
+    // O Dashboard original usava aVencer7dias. Para simplificar, manteremos o mock aqui, 
+    // mas o card de Alertas já está puxando do NotificacoesModule.
+    
+    const totalCobrancas = qteCobrancasVencidas + qteCobrancasAVencer;
     const subCobrancas = `
       <span class="material-symbols-outlined icon-sm text-danger">error</span>
-      <span class="text-danger">${mockDashboardData.cobrancas.vencidas} vencida${mockDashboardData.cobrancas.vencidas !== 1 ? 's' : ''}</span>
-      · ${mockDashboardData.cobrancas.aVencer7dias} a vencer em 7 dias
+      <span class="text-danger">${qteCobrancasVencidas} vencida${qteCobrancasVencidas !== 1 ? 's' : ''}</span>
+      · ${qteCobrancasAVencer} a vencer em 7 dias
     `;
 
     // ── INJETAR HTML NO CONTAINER ──────────────────────────────────────────
@@ -561,5 +612,42 @@ export const DashboardModule = {
         }
       });
     });
+    
+    // Atualiza o dashboard se as notificações carregarem depois do dashboard
+    if (handleNotificacoesAtualizadas) {
+      window.removeEventListener('notificacoes-atualizadas', handleNotificacoesAtualizadas);
+    }
+    
+    handleNotificacoesAtualizadas = () => {
+      // Evitar re-renderizar a tela toda e causar piscar excessivo, apenas atualiza o html do card
+      const cardBody = container.querySelector('#card-alertas .alerta-list');
+      if (cardBody) {
+        const resumo = NotificacoesModule.obterResumoDashboard();
+        if (!resumo.carregando) {
+          if (resumo.totalPendencias === 0) {
+            cardBody.innerHTML = '<p class="text-success text-sm"><span class="material-symbols-outlined icon-sm" style="vertical-align: middle;">check_circle</span> Tudo em dia!</p>';
+          } else {
+            const lista = [];
+            if (resumo.vencidas.quantidade > 0) {
+              lista.push({
+                tipo: 'vencido',
+                texto: `${resumo.vencidas.quantidade} pendência${resumo.vencidas.quantidade > 1 ? 's' : ''} em atraso`,
+                sub: `Valor total: ${formatarMoeda(resumo.vencidas.valor)}`
+              });
+            }
+            if (resumo.aVencer.quantidade > 0) {
+              lista.push({
+                tipo: 'avencer',
+                texto: `${resumo.aVencer.quantidade} pendência${resumo.aVencer.quantidade > 1 ? 's' : ''} vencendo hoje/amanhã`,
+                sub: `Valor total: ${formatarMoeda(resumo.aVencer.valor)}`
+              });
+            }
+            cardBody.innerHTML = lista.map(gerarItemAlerta).join('');
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('notificacoes-atualizadas', handleNotificacoesAtualizadas);
   },
 };
