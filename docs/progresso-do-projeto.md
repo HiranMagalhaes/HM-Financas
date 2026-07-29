@@ -9,9 +9,9 @@
 
 | Campo | Valor |
 |---|---|
-| **Módulo Atual** | Módulo 11 — PWA (Progressive Web App) |
-| **Status** | Finalizado Módulo 11. O App agora tem suporte a instalação e uso offline! |
-| **Última Atualização** | Módulo 11 (PWA) concluído com Manifesto, Service Worker (Network First). |
+| **Módulo Atual** | Módulo 12 — Deploy (Firebase Hosting) |
+| **Status** | 🎉 PROJETO CONCLUÍDO! Todos os módulos finalizados com sucesso! |
+| **Última Atualização** | Módulo 12 concluído com arquivos de configuração de host na raiz (`firebase.json`). |
 
 ## Histórico de Implementação
 
@@ -132,9 +132,12 @@
 
 ---
 
-## Próximos Passos — Módulo 12: Deploy (Firebase Hosting)
+### ✅ Módulo 12: Deploy (Firebase Hosting)
+- [x] Criação de `.firebaserc` referenciando `hmfinancas`.
+- [x] Criação de `firebase.json` estruturando SPA Rewrite (redirecionar para `index.html`).
+- [x] Regra rígida de bloqueio para pastas sensíveis não subirem para a web (ex: `.git`, `docs`, `README.md`).
 
-### Sugestões para a implementação:
-- Inicializar `firebase-tools`.
-- Configurar rotas para SPA (redirecionar tudo para `index.html`).
-- Fazer deploy na web.
+---
+
+## 🎉 Projeto HM Finanças Finalizado
+Parabéns! Todos os 12 Módulos documentados foram implementados com sucesso seguindo as melhores práticas de Front-end Vanilla (JS puro), Responsividade e Integração Cloud via Firebase. O sistema está preparado para gerenciar patrimônio, cartões, dívidas, notificações e se comportar como um App nativo (PWA).

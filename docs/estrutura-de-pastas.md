@@ -8,6 +8,8 @@ HM-Financas/
 ├── index.html                    ← Ponto de entrada único da aplicação
 ├── manifest.json                 ← ✅ PWA: Manifesto Web App (cores, nome, ícones)
 ├── service-worker.js             ← ✅ PWA: Lógica de cache offline (Network First)
+├── firebase.json                 ← ✅ Hosting: Regras do Firebase Hosting (Módulo 12)
+├── .firebaserc                   ← ✅ Hosting: Vínculo do projeto (Módulo 12)
 ├── README.md                     ← Documentação pública do GitHub
 ├── .gitignore                    ← Arquivos ignorados pelo Git (ex: firebase-config.js)
 ├── firestore.rules               ← Regras de segurança de banco de dados do Firebase Firestore
