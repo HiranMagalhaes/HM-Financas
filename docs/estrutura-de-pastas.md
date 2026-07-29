@@ -6,6 +6,8 @@
 HM-Financas/
 │
 ├── index.html                    ← Ponto de entrada único da aplicação
+├── manifest.json                 ← ✅ PWA: Manifesto Web App (cores, nome, ícones)
+├── service-worker.js             ← ✅ PWA: Lógica de cache offline (Network First)
 ├── README.md                     ← Documentação pública do GitHub
 ├── .gitignore                    ← Arquivos ignorados pelo Git (ex: firebase-config.js)
 ├── firestore.rules               ← Regras de segurança de banco de dados do Firebase Firestore
@@ -31,6 +33,7 @@ HM-Financas/
 ├── scripts/                      ← Lógica em JavaScript puro
 │   ├── app.js                    ← Inicialização, controle de tema, splash screen, setup layout
 │   ├── router.js                 ← Roteador vanilla SPA baseado em Hash (#/)
+│   ├── pwa-register.js           ← ✅ PWA: Registro seguro do Service Worker
 │   │
 │   ├── firebase/                 ← Integração com Firebase
 │   │   ├── firebase-config.js    ← (NÃO COMITADO) Credenciais e inicialização do SDK

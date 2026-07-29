@@ -9,9 +9,9 @@
 
 | Campo | Valor |
 |---|---|
-| **Módulo Atual** | Módulo 10 — Configurações |
-| **Status** | Finalizado Módulo 10. Todos os módulos centrais da aplicação estão completos! |
-| **Última Atualização** | Módulo 10 (Configurações) concluído com edição de perfil, segurança, exclusão e tema. |
+| **Módulo Atual** | Módulo 11 — PWA (Progressive Web App) |
+| **Status** | Finalizado Módulo 11. O App agora tem suporte a instalação e uso offline! |
+| **Última Atualização** | Módulo 11 (PWA) concluído com Manifesto, Service Worker (Network First). |
 
 ## Histórico de Implementação
 
@@ -123,9 +123,18 @@
 
 ---
 
-## Próximos Passos — Módulo 11: PWA (Progressive Web App)
+### ✅ Módulo 11: PWA (Progressive Web App)
+- [x] Criação do `manifest.json` com nome, cores, rotas e apontamento de ícones.
+- [x] Inserção da cor de tema (dourado) e link no `index.html`.
+- [x] Criação de `service-worker.js` implementando "Network First" para garantir versões recentes.
+- [x] Injeção de `scripts/pwa-register.js` para carregamento assíncrono.
+- [ ] **PENDÊNCIA**: O usuário precisa adicionar as imagens `icon-192.png` e `icon-512.png` reais na pasta `assets/icons/`. Até lá, o app web funciona perfeitamente, mas a opção "Adicionar à Tela Inicial" pode falhar/exibir ícone em branco no celular.
+
+---
+
+## Próximos Passos — Módulo 12: Deploy (Firebase Hosting)
 
 ### Sugestões para a implementação:
-- Adicionar `manifest.json`.
-- Implementar Service Worker para cache básico offline e instalação na tela inicial (Android/iOS).
-- Revisão final de SEO e metatags.
+- Inicializar `firebase-tools`.
+- Configurar rotas para SPA (redirecionar tudo para `index.html`).
+- Fazer deploy na web.
