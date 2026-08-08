@@ -43,11 +43,14 @@ function obterStatusReal(promissoria) {
 }
 
 async function atualizarTotalCliente(clienteId) {
-  const promissoriasDoCliente = estado.promissorias.filter(p =>
-    p.clienteId === clienteId && p.status !== 'recebida'
-  );
-  const total = promissoriasDoCliente.reduce((acc, p) => acc + (p.capitalRestante || p.valorInvestido || 0), 0);
-  await FirestoreService.atualizar('clientes', clienteId, { promissoriasEmAberto: total });
+  // Busca direto do banco de dados para evitar duplicação em caso de disparo do listener local
+  const promissoriasRes = await FirestoreService.listar('promissorias');
+  if (promissoriasRes.sucesso) {
+    const total = promissoriasRes.dados
+      .filter(p => p.clienteId === clienteId && p.status !== 'recebida')
+      .reduce((acc, p) => acc + (p.capitalRestante || p.valorInvestido || 0), 0);
+    await FirestoreService.atualizar('clientes', clienteId, { promissoriasEmAberto: total });
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -219,7 +222,6 @@ async function criarPromissoria(evento) {
   const res = await FirestoreService.criar('promissorias', novaPromissoria);
 
   if (res.sucesso) {
-    estado.promissorias.push({ id: res.id, ...novaPromissoria });
     await atualizarTotalCliente(cliente.id);
     await atualizarResumoPatrimonio();
     fecharModal('modal-nova-promissoria');

@@ -24,9 +24,11 @@ import { Router } from '../../router.js';
 let estado = {
   configuracao: { limiteTotal: 0, capitalDisponivel: 0 },
   operacoes: [],
+  cartoes: [],
   carregando: true
 };
 let unsubscribeOperacoes = null;
+let unsubscribeCartoes = null;
 let _container = null;
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +159,18 @@ async function criarOperacao(evento) {
     // Retirada via cartão: parcelado sem juros
     const parcelas = parseInt(formData.get('parcelas')) || 1;
     const valorParcela = valorConcedido / parcelas;
+    const cartaoOrigemId = formData.get('cartaoOrigemId');
+
+    if (!cartaoOrigemId) {
+      mostrarToast({ tipo: 'warning', titulo: 'Atenção', mensagem: 'Selecione um cartão para a retirada.' });
+      return;
+    }
+
+    const cartao = estado.cartoes.find(c => c.id === cartaoOrigemId);
+    if (!cartao || (cartao.limiteTotal - (cartao.valorUsado || 0)) < valorConcedido) {
+      mostrarToast({ tipo: 'warning', titulo: 'Limite insuficiente', mensagem: 'O cartão selecionado não tem limite suficiente.' });
+      return;
+    }
 
     novaOperacao = {
       destino: formData.get('destino'),
@@ -165,6 +179,8 @@ async function criarOperacao(evento) {
       taxaJuros: 0,
       parcelas,
       valorParcela,
+      cartaoOrigemId,
+      cartaoOrigemNome: cartao.nome,
       dataConcessao: formData.get('dataConcessao'),
       dataPrevista: formData.get('dataPrevista'),
       tipoOperacao: 'retirada_cartao',
@@ -197,12 +213,22 @@ async function criarOperacao(evento) {
   const btnSubmit = form.querySelector('button[type="submit"]');
   if (btnSubmit) btnSubmit.disabled = true;
 
-  // Deduz do capital disponível
-  estado.configuracao.capitalDisponivel -= valorConcedido;
+  // Deduz do capital disponível apenas se for crédito próprio
+  if (tipoOperacao === 'credito') {
+    estado.configuracao.capitalDisponivel -= valorConcedido;
+  } else if (tipoOperacao === 'retirada_cartao') {
+    // Debita do cartão
+    const cartao = estado.cartoes.find(c => c.id === novaOperacao.cartaoOrigemId);
+    if (cartao) {
+      await FirestoreService.atualizar('cartoes_lista', cartao.id, {
+        valorUsado: (cartao.valorUsado || 0) + valorConcedido
+      });
+    }
+  }
 
   const resOp = await FirestoreService.criar('hmcred_operacoes', novaOperacao);
   if (resOp.sucesso) {
-    await salvarConfiguracao();
+    if (tipoOperacao === 'credito') await salvarConfiguracao();
     fecharModal('modal-nova-operacao');
     form.reset();
     // Reseta tabs para crédito
@@ -212,7 +238,16 @@ async function criarOperacao(evento) {
   } else {
     mostrarToast({ tipo: 'danger', titulo: 'Erro ao salvar', mensagem: 'Tente novamente.' });
     // Reverte o capital em caso de erro
-    estado.configuracao.capitalDisponivel += valorConcedido;
+    if (tipoOperacao === 'credito') {
+      estado.configuracao.capitalDisponivel += valorConcedido;
+    } else if (tipoOperacao === 'retirada_cartao') {
+      const cartao = estado.cartoes.find(c => c.id === novaOperacao.cartaoOrigemId);
+      if (cartao) {
+        await FirestoreService.atualizar('cartoes_lista', cartao.id, {
+          valorUsado: Math.max(0, (cartao.valorUsado || 0) - valorConcedido)
+        });
+      }
+    }
   }
 
   if (btnSubmit) btnSubmit.disabled = false;
@@ -230,14 +265,18 @@ async function marcarComoPaga(id) {
   // Atualiza operação
   await FirestoreService.atualizar('hmcred_operacoes', id, { status: 'pago', dataPagamento: new Date().toISOString() });
 
-  // Devolve ao caixa o valor a receber (concedido + lucro)
-  estado.configuracao.capitalDisponivel += operacao.valorReceber;
-  // O limite total também cresce pelo lucro obtido (reinvestimento)
-  const lucro = operacao.valorReceber - operacao.valorConcedido;
-  estado.configuracao.limiteTotal += lucro;
+  if (operacao.tipoOperacao === 'credito') {
+    // Devolve ao caixa o valor a receber (concedido + lucro)
+    estado.configuracao.capitalDisponivel += operacao.valorReceber;
+    // O limite total também cresce pelo lucro obtido (reinvestimento)
+    const lucro = operacao.valorReceber - operacao.valorConcedido;
+    estado.configuracao.limiteTotal += lucro;
 
-  await salvarConfiguracao();
-  mostrarToast({ tipo: 'success', titulo: 'Operação paga!', mensagem: `${formatarMoeda(operacao.valorReceber)} devolvido ao capital.` });
+    await salvarConfiguracao();
+    mostrarToast({ tipo: 'success', titulo: 'Operação paga!', mensagem: `${formatarMoeda(operacao.valorReceber)} devolvido ao capital HMCRED.` });
+  } else if (operacao.tipoOperacao === 'retirada_cartao') {
+    mostrarToast({ tipo: 'success', titulo: 'Operação paga!', mensagem: `Retirada via cartão finalizada. Lembre-se de registrar a entrada na conta desejada (Dinheiro).` });
+  }
 }
 
 /**
@@ -253,10 +292,20 @@ async function excluirOperacao(id) {
 
   // Se não estava pago, estorna
   if (operacao.status !== 'pago') {
-    estado.configuracao.capitalDisponivel += operacao.valorConcedido;
-    await salvarConfiguracao();
+    if (operacao.tipoOperacao === 'credito') {
+      estado.configuracao.capitalDisponivel += operacao.valorConcedido;
+      await salvarConfiguracao();
+    } else if (operacao.tipoOperacao === 'retirada_cartao' && operacao.cartaoOrigemId) {
+      // Estorna do limite do cartão
+      const cartao = estado.cartoes.find(c => c.id === operacao.cartaoOrigemId);
+      if (cartao) {
+        await FirestoreService.atualizar('cartoes_lista', cartao.id, {
+          valorUsado: Math.max(0, (cartao.valorUsado || 0) - operacao.valorConcedido)
+        });
+      }
+    }
   }
-  mostrarToast({ tipo: 'success', titulo: 'Operação excluída', mensagem: 'O valor foi estornado ao capital.' });
+  mostrarToast({ tipo: 'success', titulo: 'Operação excluída', mensagem: 'O valor foi estornado.' });
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -278,6 +327,13 @@ function abrirModal(id) {
 ───────────────────────────────────────────────────────────────────────────── */
 
 function renderizarModais() {
+  const opcoesCartoes = estado.cartoes.length > 0 
+    ? estado.cartoes.map(c => {
+        const limiteDisponivel = c.limiteTotal - (c.valorUsado || 0);
+        return `<option value="${c.id}">${c.nome} (Livre: ${formatarMoeda(limiteDisponivel)})</option>`;
+      }).join('')
+    : '<option value="">Nenhum cartão cadastrado</option>';
+
   return `
     <!-- ── Modal: Nova Operação ── -->
     <div class="modal-overlay" id="modal-nova-operacao" role="dialog" aria-modal="true">
@@ -350,6 +406,14 @@ function renderizarModais() {
 
             <!-- Seção Retirada via Cartão -->
             <div id="secao-cartao" style="display: none;">
+              <div class="form-group">
+                <label class="form-label" for="op-cartao">Cartão de Origem <span class="required">*</span></label>
+                <select id="op-cartao" name="cartaoOrigemId" class="form-input form-select" ${estado.cartoes.length === 0 ? 'disabled' : ''}>
+                  <option value="">Selecione um cartão...</option>
+                  ${opcoesCartoes}
+                </select>
+                ${estado.cartoes.length === 0 ? '<small class="text-danger" style="display:block; margin-top:4px;">Nenhum cartão cadastrado no módulo Cartões.</small>' : ''}
+              </div>
               <div class="form-group">
                 <label class="form-label" for="op-parcelas">Número de Parcelas (sem juros)</label>
                 <select id="op-parcelas" name="parcelas" class="form-input form-select">
@@ -432,7 +496,7 @@ function renderizarLinhaOperacao(op) {
   };
 
   const tipoLabel = op.tipoOperacao === 'retirada_cartao'
-    ? `<span class="badge badge-neutral" style="font-size: 10px;">Cartão ${op.parcelas}x</span>`
+    ? `<span class="badge badge-neutral" style="font-size: 10px;">Cartão ${op.parcelas}x (${op.cartaoOrigemNome || '?'})</span>`
     : `<span class="badge badge-neutral" style="font-size: 10px;">${op.taxaJuros ? op.taxaJuros + '%/mês' : 'Crédito'}</span>`;
 
   return `
@@ -701,6 +765,15 @@ export const HmcredModule = {
       estado.operacoes = operacoes;
       renderizarTelaPrincipal(container);
     }, { ordenarPor: 'dataPrevista', direcao: 'asc' });
+
+    // Escutar cartões em tempo real
+    if (unsubscribeCartoes) unsubscribeCartoes();
+    unsubscribeCartoes = FirestoreService.escutar('cartoes_lista', (cartoes) => {
+      estado.cartoes = cartoes;
+      if (document.getElementById('modal-nova-operacao')) {
+        renderizarTelaPrincipal(container); // Re-renderiza para atualizar as opções de cartão
+      }
+    });
 
     // Se estiver vazio (primeiro acesso) a tela já reage
     if (!resConfig.sucesso) {

@@ -199,10 +199,16 @@ async function atualizarCartao(evento) {
  */
 async function excluirCartao(id) {
   const cartao = estado.cartoes.find(c => c.id === id);
-  const nomeCartao = cartao ? `"${cartao.nome}"` : 'este cartão';
+  if (!cartao) return;
 
+  if ((cartao.valorUsado || 0) > 0) {
+    mostrarToast({ tipo: 'danger', titulo: 'Ação não permitida', mensagem: 'Não é possível excluir um cartão que possui limite utilizado. Pague a fatura antes.' });
+    return;
+  }
+
+  const nomeCartao = `"${cartao.nome}"`;
   const confirmado = confirm(
-    `Tem certeza que deseja excluir ${nomeCartao} permanentemente?\n\nSua dívida e limite serão removidos do sistema.`
+    `Tem certeza que deseja excluir ${nomeCartao} permanentemente?`
   );
   if (!confirmado) return;
 

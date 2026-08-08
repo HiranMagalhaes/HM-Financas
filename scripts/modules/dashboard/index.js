@@ -35,55 +35,9 @@ import { NotificacoesModule } from '../notificacoes/index.js';
    Cada campo corresponde a um documento ou agregação esperada no banco.
    Para substituir: buscar via FirestoreService e atribuir ao mesmo objeto.
 ───────────────────────────────────────────────────────────────────────────── */
-const mockDashboardData = {
-
-  // Saldo disponível em caixa (Firestore: coleção 'caixa', campo 'saldo')
-  saldoTotal: 15_430.50,
-
-  // Patrimônio total (Firestore: soma dos documentos em 'patrimonio')
-  patrimonio: 45_200.00,
-
-  // Total em circulação em promissórias ativas
-  // (Firestore: soma de 'promissorias' onde status == 'ativa')
-  promissoriasAtivas: 12_500.00,
-
-  // Lucro estimado das promissórias ativas (juros a receber)
-  lucroEstimado: 2_350.00,
-
-  // Total de operações de crédito (HMCRED) em aberto
-  operacoesHmcred: 8_200.00,
-
-  // Cobranças: quantidade vencida e a vencer nos próximos 7 dias
-  cobrancas: {
-    vencidas: 3,       // (Firestore: promissórias onde vencimento < hoje)
-    aVencer7dias: 5,   // (Firestore: promissórias vencendo nos próximos 7 dias)
-  },
-
-  // Recebimentos no mês atual
-  recebimentosMes: 4_200.00,
-
-  // Indicadores de variação (em % em relação ao mês anterior)
-  // Substituir futuramente com cálculo real
-  variacoes: {
-    saldo:      +2.5,
-    patrimonio: +1.8,
-    promissorias: +4.2,
-    recebimentos: +12.0,
-  },
-
-  // Últimas movimentações (Firestore: coleção 'movimentacoes', ordenada por data desc, limit 6)
-  movimentacoesRecentes: [
-    { id: 1, tipo: 'receita',      descricao: 'Pgto João Silva – Parc. 3/6',  valor: 850.00,  data: '2026-07-24' },
-    { id: 2, tipo: 'despesa',      descricao: 'Saque HMCRED – Marcos',         valor: 1_200.00, data: '2026-07-23' },
-    { id: 3, tipo: 'receita',      descricao: 'Pgto Maria Santos – Parc. 1/3', valor: 450.00,  data: '2026-07-22' },
-    { id: 4, tipo: 'transferencia',descricao: 'Depósito bancário',             valor: 5_000.00, data: '2026-07-21' },
-    { id: 5, tipo: 'receita',      descricao: 'Pgto Carlos Mendes – Parc. 2/4',valor: 600.00,  data: '2026-07-20' },
-    { id: 6, tipo: 'despesa',      descricao: 'Taxa administrativa',           valor: 85.00,   data: '2026-07-19' },
-  ],
-
-  // Alertas recentes (Substituído pelo NotificacoesModule)
-  alertas: [],
-};
+// O Dashboard agora utiliza dados reais do Firestore.
+// As movimentações recentes ficarão temporariamente vazias até a implementação
+// do histórico consolidado (lançamentos) no módulo Dinheiro.
 
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -320,10 +274,8 @@ export const DashboardModule = {
     if (hora >= 12 && hora < 18) saudacao = 'Boa tarde';
     else if (hora >= 18) saudacao = 'Boa noite';
 
-    // Gerar HTML da lista de movimentações recentes
-    const movimentacoesHtml = mockDashboardData.movimentacoesRecentes.length > 0
-      ? mockDashboardData.movimentacoesRecentes.map(gerarItemMovimentacao).join('')
-      : '<p class="text-muted text-sm" style="padding: var(--space-4) 0;">Nenhuma movimentação recente.</p>';
+    // Gerar HTML da lista de movimentações recentes (vazia por enquanto até ter tabela de histórico)
+    const movimentacoesHtml = '<p class="text-muted text-sm" style="padding: var(--space-4) 0;"><span class="material-symbols-outlined icon-sm" style="vertical-align: middle;">history</span> O histórico consolidado será implementado no próximo módulo.</p>';
 
     // Obter resumo de notificações
     const resumoNotificacoes = NotificacoesModule.obterResumoDashboard();
@@ -352,24 +304,89 @@ export const DashboardModule = {
       alertasHtml = listaAlertasConsolidados.map(gerarItemAlerta).join('');
     }
 
-    // Variações formatadas para os cards
-    const varSaldo = mockDashboardData.variacoes.saldo;
-    const varPatrimonio = mockDashboardData.variacoes.patrimonio;
-    const varPromissorias = mockDashboardData.variacoes.promissorias;
-    const varRecebimentos = mockDashboardData.variacoes.recebimentos;
+    // Variações formatadas para os cards (temporariamente zero até implementarmos histórico)
+    const varSaldo = 0;
+    const varPatrimonio = 0;
+    const varPromissorias = 0;
+    const varRecebimentos = 0;
 
-    // Atualizar dados de cobranças pendentes baseando-se nas notificações, se disponíveis
-    let qteCobrancasVencidas = mockDashboardData.cobrancas.vencidas;
-    let qteCobrancasAVencer = mockDashboardData.cobrancas.aVencer7dias;
-    // O Dashboard original usava aVencer7dias. Para simplificar, manteremos o mock aqui, 
-    // mas o card de Alertas já está puxando do NotificacoesModule.
+    // Obter dados adicionais do banco
+    const [resDinheiro, resPatrimonio, resHmcred] = await Promise.all([
+      FirestoreService.listar('dinheiro_contas'),
+      FirestoreService.obter('patrimonio', 'resumo'),
+      FirestoreService.listar('hmcred_operacoes')
+    ]);
+
+    let saldoTotal = 0;
+    if (resDinheiro.sucesso) {
+      saldoTotal = resDinheiro.dados.reduce((acc, c) => acc + (c.saldo || 0), 0);
+    }
+
+    let patrimonioTotal = 0;
+    if (resPatrimonio.sucesso && resPatrimonio.dados) {
+      const d = resPatrimonio.dados;
+      patrimonioTotal = (d.hmcred || 0) + (d.dinheiro || 0) + (d.promissorias || 0) + (d.cartoes || 0);
+    }
+
+    let operacoesHmcred = 0;
+    let recebimentosMes = 0;
+    const mesAtual = new Date().getMonth();
+    const anoAtual = new Date().getFullYear();
+
+    if (resHmcred.sucesso) {
+      resHmcred.dados.forEach(op => {
+        if (op.status !== 'pago') {
+          operacoesHmcred += (op.valorConcedido || 0);
+        } else if (op.dataPagamento) {
+          const dPag = new Date(op.dataPagamento);
+          if (dPag.getMonth() === mesAtual && dPag.getFullYear() === anoAtual) {
+            recebimentosMes += (op.valorReceber || 0);
+          }
+        }
+      });
+    }
+
+    // Soma pagamentos de promissórias ao recebimento do mês
+    if (promissoriasRes.sucesso) {
+      promissoriasRes.dados.forEach(p => {
+        if (p.status === 'recebida' && p.dataRecebimento) {
+          const dPag = new Date(p.dataRecebimento);
+          if (dPag.getMonth() === mesAtual && dPag.getFullYear() === anoAtual) {
+            recebimentosMes += (p.valorInvestido + (p.lucroAcumulado || p.lucro || 0));
+          }
+        }
+        if (p.pagosParcelas && p.pagosParcelas.length > 0) {
+          p.pagosParcelas.forEach(parc => {
+            if (parc.dataPagamento) {
+              const dPag = new Date(parc.dataPagamento);
+              if (dPag.getMonth() === mesAtual && dPag.getFullYear() === anoAtual) {
+                recebimentosMes += (parc.parcela || 0);
+              }
+            }
+          });
+        }
+        if (p.pagosJuros && p.pagosJuros.length > 0) {
+          p.pagosJuros.forEach(j => {
+            if (j.dataPagamento) {
+              const dPag = new Date(j.dataPagamento);
+              if (dPag.getMonth() === mesAtual && dPag.getFullYear() === anoAtual) {
+                recebimentosMes += (j.valor || 0);
+              }
+            }
+          });
+        }
+      });
+    }
+
+    let qteCobrancasVencidas = resumoNotificacoes.vencidas.quantidade || 0;
+    let qteCobrancasAVencer = resumoNotificacoes.aVencer.quantidade || 0;
     
     const totalCobrancas = qteCobrancasVencidas + qteCobrancasAVencer;
-    const subCobrancas = `
+    const subCobrancas = totalCobrancas > 0 ? `
       <span class="material-symbols-outlined icon-sm text-danger">error</span>
       <span class="text-danger">${qteCobrancasVencidas} vencida${qteCobrancasVencidas !== 1 ? 's' : ''}</span>
       · ${qteCobrancasAVencer} a vencer em 7 dias
-    `;
+    ` : '<span class="text-success"><span class="material-symbols-outlined icon-sm" style="vertical-align: middle;">check_circle</span> Nenhuma pendência próxima</span>';
 
     // ── INJETAR HTML NO CONTAINER ──────────────────────────────────────────
     container.innerHTML = `
@@ -380,11 +397,7 @@ export const DashboardModule = {
           <h2 class="page-title">${saudacao}, ${nomeAmigavel} 👋</h2>
           <p class="page-subtitle">Aqui está o resumo das suas finanças de hoje.</p>
         </div>
-        <!-- Badge de modo demonstração -->
-        <div class="badge badge-gold" title="Os dados são simulados e serão substituídos por dados reais do Firestore">
-          <span class="material-symbols-outlined icon-sm">science</span>
-          Modo Demo
-        </div>
+        <!-- Badge de modo demonstração removido -->
       </div>
 
       <!-- ══ CARDS PRINCIPAIS (STATS) ═════════════════════════════════════ -->
@@ -397,48 +410,32 @@ export const DashboardModule = {
 
         ${gerarStatCard({
           label: 'Saldo Disponível',
-          valor: formatarMoeda(mockDashboardData.saldoTotal),
+          valor: formatarMoeda(saldoTotal),
           icone: 'account_balance_wallet',
           classExtra: 'card-gold',
           classeValor: 'text-gold',
-          subTexto: `
-            <span class="material-symbols-outlined icon-sm ${varSaldo >= 0 ? 'text-success' : 'text-danger'}">
-              ${varSaldo >= 0 ? 'trending_up' : 'trending_down'}
-            </span>
-            <span class="${varSaldo >= 0 ? 'text-success' : 'text-danger'}">
-              ${varSaldo >= 0 ? '+' : ''}${varSaldo}%
-            </span>
-            em relação ao mês anterior
-          `,
+          subTexto: `Soma das contas de dinheiro`,
           rota: 'dinheiro',
         })}
 
         ${gerarStatCard({
           label: 'Patrimônio Total',
-          valor: formatarMoeda(mockDashboardData.patrimonio),
+          valor: formatarMoeda(patrimonioTotal),
           icone: 'account_balance',
           classeIcone: 'background-color: var(--bg-hover); color: var(--text-primary);',
-          subTexto: `
-            <span class="material-symbols-outlined icon-sm ${varPatrimonio >= 0 ? 'text-success' : 'text-danger'}">
-              ${varPatrimonio >= 0 ? 'trending_up' : 'trending_down'}
-            </span>
-            <span class="${varPatrimonio >= 0 ? 'text-success' : 'text-danger'}">
-              ${varPatrimonio >= 0 ? '+' : ''}${varPatrimonio}%
-            </span>
-            neste mês
-          `,
+          subTexto: `Total consolidado`,
           rota: 'patrimonio',
         })}
 
         ${gerarStatCard({
           label: 'Em Promissórias',
-          valor: formatarMoeda(mockDashboardData.promissoriasAtivas),
+          valor: formatarMoeda(promissoriasAtivas),
           icone: 'receipt_long',
           subTexto: `
             <span class="material-symbols-outlined icon-sm text-success">trending_up</span>
-            Lucro estimado:
+            Lucro esperado:
             <span class="text-success value-sensitive" style="margin-left: 4px;">
-              ${formatarMoeda(mockDashboardData.lucroEstimado)}
+              ${formatarMoeda(lucroEstimado)}
             </span>
           `,
           rota: 'promissorias',
@@ -446,18 +443,10 @@ export const DashboardModule = {
 
         ${gerarStatCard({
           label: 'Recebimentos no Mês',
-          valor: formatarMoeda(mockDashboardData.recebimentosMes),
+          valor: formatarMoeda(recebimentosMes),
           icone: 'payments',
           classeIcone: 'background-color: var(--color-success-muted); color: var(--color-success);',
-          subTexto: `
-            <span class="material-symbols-outlined icon-sm ${varRecebimentos >= 0 ? 'text-success' : 'text-danger'}">
-              ${varRecebimentos >= 0 ? 'arrow_upward' : 'arrow_downward'}
-            </span>
-            <span class="${varRecebimentos >= 0 ? 'text-success' : 'text-danger'}">
-              ${varRecebimentos >= 0 ? '+' : ''}${varRecebimentos}%
-            </span>
-            vs. mês anterior
-          `,
+          subTexto: `Pagamentos recebidos (HMCRED e Promissórias)`,
         })}
 
         ${gerarStatCard({
@@ -472,7 +461,7 @@ export const DashboardModule = {
 
         ${gerarStatCard({
           label: 'Operações HMCRED',
-          valor: formatarMoeda(mockDashboardData.operacoesHmcred),
+          valor: formatarMoeda(operacoesHmcred),
           icone: 'local_atm',
           classeIcone: 'background-color: var(--color-info-muted); color: var(--color-info);',
           subTexto: `
@@ -557,22 +546,7 @@ export const DashboardModule = {
             ${gerarAtalho('receipt_long','Promissórias',     'promissorias', '')}
           </div>
 
-          <!-- Card de Aviso: Modo Demo -->
-          <div class="card card-demo" id="card-demo" style="margin-top: var(--space-6);">
-            <div class="card-body">
-              <div class="demo-info">
-                <span class="material-symbols-outlined text-gold" aria-hidden="true">science</span>
-                <div>
-                  <h4 class="text-sm font-semibold text-gold">Modo Demonstração</h4>
-                  <p class="text-xs text-muted" style="margin-top: var(--space-1); line-height: 1.5;">
-                    Os dados exibidos neste painel são <strong>simulados</strong> (mockados)
-                    para demonstrar a estrutura visual. A integração real com o Firestore
-                    ocorrerá nos próximos módulos.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Card removido (Modo Demo desativado) -->
 
         </div><!-- /dashboard-col-direita -->
 

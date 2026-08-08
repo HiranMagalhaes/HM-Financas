@@ -178,12 +178,17 @@ async function atualizarConta(evento) {
  * @param {string} id - ID do documento da conta no Firestore
  */
 async function excluirConta(id) {
-  // Busca o nome da conta para exibir na mensagem de confirmação
   const conta = estado.contas.find(c => c.id === id);
-  const nomeConta = conta ? `"${conta.nome}"` : 'esta conta';
+  if (!conta) return;
 
+  if (conta.saldo > 0) {
+    mostrarToast({ tipo: 'danger', titulo: 'Ação não permitida', mensagem: 'Não é possível excluir uma conta que possui saldo. Zere o saldo antes de excluir.' });
+    return;
+  }
+
+  const nomeConta = `"${conta.nome}"`;
   const confirmado = confirm(
-    `Tem certeza que deseja excluir ${nomeConta} permanentemente?\n\nO saldo será removido do seu patrimônio.`
+    `Tem certeza que deseja excluir ${nomeConta} permanentemente?`
   );
   if (!confirmado) return;
 
