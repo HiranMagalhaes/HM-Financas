@@ -220,6 +220,26 @@ function abrirModalLancamento(idConta) {
 }
 
 /**
+ * Atalho: abre o modal de lançamento já selecionado em modo "Entrada".
+ * Chamado pelo botão "Adicionar" em cada card de conta.
+ *
+ * @param {string} idConta - ID da conta que receberá a entrada rápida
+ */
+function abrirModalEntradaRapida(idConta) {
+  // Abre o modal normalmente
+  abrirModalLancamento(idConta);
+
+  // Após abrir, força seleção de "entrada" no radio button
+  setTimeout(() => {
+    const radioEntrada = document.querySelector('input[name="tipoLancamento"][value="entrada"]');
+    if (radioEntrada) {
+      radioEntrada.checked = true;
+      radioEntrada.dispatchEvent(new Event('change'));
+    }
+  }, 50);
+}
+
+/**
  * Registra um lançamento (entrada ou saída) em uma conta.
  * Recalcula o saldo da conta e salva no Firestore.
  * Chamada pelo evento submit do form#form-lancamento.
@@ -362,8 +382,13 @@ function renderizarCardConta(conta) {
           </div>
 
           <!-- Botões de ação para cada conta -->
-          <div style="display: flex; gap: var(--space-1);">
-            <button class="btn btn-ghost btn-icon" title="Registrar movimentação" data-acao="movimentar" data-id="${conta.id}" aria-label="Registrar movimentação em ${conta.nome}">
+          <div style="display: flex; gap: var(--space-2); align-items: center;">
+            <button class="btn btn-sm" style="background-color: var(--color-success-muted); color: var(--color-success); border: 1px solid var(--color-success-border); gap: 4px; display: flex; align-items: center;"
+                    title="Adicionar valor" data-acao="entrada-rapida" data-id="${conta.id}" aria-label="Adicionar valor em ${conta.nome}">
+              <span class="material-symbols-outlined" style="font-size: 16px;">add_circle</span>
+              Adicionar
+            </button>
+            <button class="btn btn-ghost btn-icon" title="Registrar movimentação (entrada/saída)" data-acao="movimentar" data-id="${conta.id}" aria-label="Registrar movimentação em ${conta.nome}">
               <span class="material-symbols-outlined" style="color: var(--color-info);">sync_alt</span>
             </button>
             <button class="btn btn-ghost btn-icon" title="Editar conta" data-acao="editar" data-id="${conta.id}" aria-label="Editar conta ${conta.nome}">
@@ -672,9 +697,10 @@ function registrarEventosTela(container) {
       const acao = btn.getAttribute('data-acao');
       const id   = btn.getAttribute('data-id');
 
-      if (acao === 'movimentar') abrirModalLancamento(id);
-      if (acao === 'editar')     abrirModalEdicao(id);
-      if (acao === 'excluir')    excluirConta(id);
+      if (acao === 'movimentar')    abrirModalLancamento(id);
+      if (acao === 'editar')         abrirModalEdicao(id);
+      if (acao === 'excluir')        excluirConta(id);
+      if (acao === 'entrada-rapida') abrirModalEntradaRapida(id);
     });
   });
 
