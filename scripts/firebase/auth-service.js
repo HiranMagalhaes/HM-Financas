@@ -14,7 +14,9 @@ import {
   sendPasswordResetEmail, 
   onAuthStateChanged,
   updateProfile,
-  deleteUser
+  deleteUser,
+  GoogleAuthProvider,
+  signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 export const AuthService = {
@@ -57,6 +59,21 @@ export const AuthService = {
     } catch (erro) {
       const mensagem = this._traduzirErroAuth(erro.code);
       console.error('[AuthService] Erro no login:', erro.code);
+      return { sucesso: false, erro: mensagem };
+    }
+  },
+
+  async loginComGoogle() {
+    if (!auth) return { sucesso: false, erro: 'Serviço de autenticação indisponível.' };
+
+    try {
+      const provider = new GoogleAuthProvider();
+      const resultado = await signInWithPopup(auth, provider);
+      console.log('[AuthService] Login via Google realizado:', resultado.user.email);
+      return { sucesso: true, usuario: resultado.user };
+    } catch (erro) {
+      const mensagem = this._traduzirErroAuth(erro.code);
+      console.error('[AuthService] Erro no login com Google:', erro.code);
       return { sucesso: false, erro: mensagem };
     }
   },

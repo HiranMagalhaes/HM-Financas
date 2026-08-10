@@ -303,6 +303,7 @@ async function registrarLancamento(evento) {
   const tipoAcao  = formData.get('tipoAcao'); // 'gasto' ou 'pagamento'
   const parcelas  = parseInt(formData.get('parcelas') || '1', 10);
   const descricao = (formData.get('descricao') || '').trim();
+  const categoria = formData.get('categoria') || 'Outros';
 
   const cartao = estado.cartoes.find(c => c.id === idCartao);
   if (!cartao) return;
@@ -342,10 +343,13 @@ async function registrarLancamento(evento) {
     const valorParcela = parseFloat((valor / parcelas).toFixed(2));
     const hoje = new Date();
 
-    // Gera array de parcelas com datas mensais
+    // Gera array de parcelas com datas baseadas no diaVencimento do cartão
+    const diaVenc = cartao.diaVencimento || hoje.getDate();
+    
     const listasParcelas = Array.from({ length: parcelas }, (_, i) => {
-      const venc = new Date(hoje);
-      venc.setMonth(hoje.getMonth() + i + 1);
+      // Ajusta o mês de vencimento. Se hoje é depois do dia de fechamento (geralmente diaVenc-7), a primeira parcela vai pro mês seguinte. 
+      // Por simplicidade, assumimos que a 1ª parcela vence no próximo mês
+      const venc = new Date(hoje.getFullYear(), hoje.getMonth() + i + 1, diaVenc);
       return {
         numero: i + 1,
         valor: valorParcela,
@@ -359,6 +363,7 @@ async function registrarLancamento(evento) {
       cartaoId: idCartao,
       cartaoNome: cartao.nome,
       descricao: descricao || 'Compra parcelada',
+      categoria: categoria,
       valorTotal: valor,
       numeroParcelas: parcelas,
       valorParcela,
@@ -369,6 +374,21 @@ async function registrarLancamento(evento) {
     };
 
     await FirestoreService.criar('cartoes_compras', compra);
+  }
+  
+  if (res.sucesso) {
+    // Registra no histórico consolidado
+    const hojeStr = new Date().toISOString().split('T')[0];
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'cartoes',
+      tipo: tipoAcao === 'gasto' ? 'despesa' : 'receita', // Para o histórico, pagar cartão é uma "saída" do dinheiro, mas aqui 'pagamento' reduz a dívida (receita para o cartão, despesa para a conta)
+      valor: valor,
+      descricao: tipoAcao === 'gasto' 
+        ? `${descricao || 'Gasto'} no ${cartao.nome}` 
+        : `Pagamento da fatura ${cartao.nome}`,
+      categoria: tipoAcao === 'gasto' ? categoria : 'Fatura Cartão',
+      data: hojeStr
+    });
   }
 
   if (btnSubmit) btnSubmit.disabled = false;
@@ -440,6 +460,16 @@ async function marcarParcelaPaga(compraId, indiceParcela) {
     const novoValorUsado = Math.max(0, (cartao.valorUsado || 0) - parcela.valor);
     await FirestoreService.atualizar('cartoes_lista', compra.cartaoId, { valorUsado: novoValorUsado });
   }
+
+  // Registra o pagamento da parcela no histórico
+  await FirestoreService.criar('lancamentos_hist', {
+    modulo: 'cartoes',
+    tipo: 'despesa', // Saiu dinheiro para pagar a parcela
+    valor: parcela.valor,
+    descricao: `Pagamento de parcela: ${compra.descricao} (${parcela.numero}/${compra.numeroParcelas})`,
+    categoria: compra.categoria || 'Cartão de Crédito',
+    data: new Date().toISOString().split('T')[0]
+  });
 
   mostrarToast({
     tipo: 'success',
@@ -891,6 +921,20 @@ function renderizarModais() {
                 <input type="text" id="lancamento-descricao" name="descricao" class="form-input"
                        placeholder="Ex: Supermercado, Eletrônico, Roupa..." autocomplete="off">
               </div>
+              
+              <div class="form-group">
+                <label class="form-label" for="lancamento-categoria">Categoria</label>
+                <select id="lancamento-categoria" name="categoria" class="form-input form-select">
+                  <option value="Alimentação">Alimentação</option>
+                  <option value="Transporte">Transporte</option>
+                  <option value="Saúde">Saúde</option>
+                  <option value="Lazer">Lazer</option>
+                  <option value="Moradia">Moradia</option>
+                  <option value="Educação">Educação</option>
+                  <option value="Outros" selected>Outros</option>
+                </select>
+              </div>
+
               <div class="form-group">
                 <label class="form-label" for="lancamento-parcelas">
                   <span class="material-symbols-outlined icon-sm" style="vertical-align: middle;">splitscreen</span>

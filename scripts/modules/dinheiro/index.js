@@ -285,12 +285,21 @@ async function registrarLancamento(evento) {
   const btnSubmit = form.querySelector('button[type="submit"]');
   if (btnSubmit) btnSubmit.disabled = true;
 
-  // Atualiza apenas o campo saldo no documento da conta
   const res = await FirestoreService.atualizar('dinheiro_contas', idConta, { saldo: novoSaldo });
 
   if (btnSubmit) btnSubmit.disabled = false;
 
   if (res.sucesso) {
+    // Registra a movimentação manual no histórico
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'dinheiro',
+      tipo: tipoLancamento === 'entrada' ? 'receita' : 'despesa',
+      valor: valor,
+      descricao: `Ajuste de saldo (${tipoLancamento}) - ${conta.nome}`,
+      categoria: 'Ajuste Manual',
+      data: new Date().toISOString().split('T')[0]
+    });
+
     fecharModal('modal-lancamento');
     form.reset();
     const labelTipo = tipoLancamento === 'entrada' ? 'Entrada registrada!' : 'Saída registrada!';

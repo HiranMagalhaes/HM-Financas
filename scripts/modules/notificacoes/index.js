@@ -23,6 +23,7 @@ let estado = {
 let unsubscribeCobrancas = null;
 let unsubscribePromissorias = null;
 let badgesHabilitados = false; // Controle para evitar loop ou múltiplas chamadas
+let nativeNotificationsRequested = false;
 
 /* ─────────────────────────────────────────────────────────────────────────────
    PROCESSAMENTO DE NOTIFICAÇÕES
@@ -86,7 +87,41 @@ function processarNotificacoes() {
     // Atualiza o dashboard se estiver renderizado (via evento customizado ou chamada)
     // Uma forma simples é disparar um evento no window que o dashboard ouve
     window.dispatchEvent(new CustomEvent('notificacoes-atualizadas'));
+    
+    // Dispara notificações nativas se for a primeira carga
+    if (!nativeNotificationsRequested && lista.length > 0) {
+      nativeNotificationsRequested = true;
+      dispararNotificacoesNativas(lista);
+    }
   }
+}
+
+/**
+ * Solicita permissão e dispara notificações nativas do navegador.
+ */
+function dispararNotificacoesNativas(lista) {
+  if (!('Notification' in window)) return;
+
+  Notification.requestPermission().then(permission => {
+    if (permission === 'granted') {
+      const atrasadas = lista.filter(n => n.status === 'atrasada').length;
+      const vencendo = lista.filter(n => n.status === 'hoje').length;
+
+      if (atrasadas > 0 || vencendo > 0) {
+        const title = 'HM Finanças - Alerta';
+        let body = '';
+        if (atrasadas > 0) body += `${atrasadas} pendência(s) vencida(s). `;
+        if (vencendo > 0) body += `${vencendo} vencendo hoje.`;
+
+        new Notification(title, {
+          body,
+          icon: '/assets/icons/icon-192x192.png',
+          tag: 'hm-financas-alert', // impede que acumulem várias
+          renotify: true
+        });
+      }
+    }
+  });
 }
 
 /**

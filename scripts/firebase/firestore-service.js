@@ -186,6 +186,22 @@ export const FirestoreService = {
         ...dados,
         atualizadoEm: serverTimestamp(),
       }, { merge: true });
+
+      // Interceptador: Se for atualização do patrimônio, salva também no histórico mensal
+      if (colecaoNome === 'patrimonio' && id === 'resumo') {
+        const hoje = new Date();
+        const mesAno = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+        const refHistorico = this.colecaoDoUsuario('patrimonio_historico');
+        if (refHistorico) {
+          const docHistorico = doc(refHistorico, mesAno);
+          await setDoc(docHistorico, {
+            ...dados,
+            mesAno,
+            atualizadoEm: serverTimestamp()
+          }, { merge: true });
+        }
+      }
+
       return { sucesso: true };
 
     } catch (erro) {

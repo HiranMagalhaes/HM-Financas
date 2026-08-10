@@ -223,7 +223,16 @@ async function criarPromissoria(evento) {
 
   if (res.sucesso) {
     await atualizarTotalCliente(cliente.id);
-    await atualizarResumoPatrimonio();
+    
+    // Registra o histórico da operação de crédito
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'promissorias',
+      tipo: 'despesa', // Saiu dinheiro do usuário para o cliente
+      valor: capital,
+      descricao: `Nova Promissória: ${cliente.nome} (${nomeMod(modalidade)})`,
+      data: new Date().toISOString().split('T')[0]
+    });
+
     fecharModal('modal-nova-promissoria');
     form.reset();
     mostrarToast({ tipo: 'success', titulo: 'Promissória criada!', mensagem: `Vinculada a ${cliente.nome} — modalidade: ${nomeMod(modalidade)}.` });
@@ -256,16 +265,29 @@ async function receberPagamentoUnico(id, clienteId) {
 
   await devolverCapitalAOrigem(p, p.valorInvestido);
 
-  await FirestoreService.atualizar('promissorias', id, {
+  const res = await FirestoreService.atualizar('promissorias', id, {
     status: 'recebida',
     lucroAcumulado: p.lucro,
     dataRecebimento: new Date().toISOString()
   });
 
-  p.status = 'recebida';
-  await atualizarTotalCliente(clienteId);
-  await atualizarResumoPatrimonio();
-  mostrarToast({ tipo: 'success', titulo: 'Recebimento Confirmado!', mensagem: `${formatarMoeda(valorTotal)} recebidos.` });
+  if (res.sucesso) {
+    p.status = 'recebida';
+    await atualizarTotalCliente(clienteId);
+
+    // Registra recebimento no histórico
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'promissorias',
+      tipo: 'receita', // Recebeu dinheiro de volta
+      valor: valorTotal,
+      descricao: `Recebimento Promissória: ${p.clienteNome}`,
+      data: new Date().toISOString().split('T')[0]
+    });
+
+    mostrarToast({ tipo: 'success', titulo: 'Recebimento Confirmado!', mensagem: `${formatarMoeda(valorTotal)} recebidos.` });
+  } else {
+    mostrarToast({ tipo: 'danger', titulo: 'Erro ao receber', mensagem: 'Não foi possível atualizar o banco.' });
+  }
 }
 
 /**
@@ -276,29 +298,29 @@ async function registrarParcelaAmortizacao(id, clienteId) {
   if (!p || p.status === 'recebida' || p.modalidade !== 'amortizacao') return;
 
   const parcelaIdx = (p.parcelaAtual || 1) - 1;
-  const parcela    = p.cronograma[parcelaIdx];
-  if (!parcela) return;
+  const parcelaCronograma = p.cronograma[parcelaIdx];
+  if (!parcelaCronograma) return;
 
   const confirmado = confirm(
-    `Registrar pagamento da Parcela ${parcela.mes}/${p.meses}?\n\n` +
-    `Amortização: ${formatarMoeda(parcela.amortizacao)}\n` +
-    `Juros: ${formatarMoeda(parcela.juros)}\n` +
-    `Valor da parcela: ${formatarMoeda(parcela.parcela)}\n` +
-    `Saldo após: ${formatarMoeda(parcela.saldoFinal)}`
+    `Registrar pagamento da Parcela ${parcelaCronograma.mes}/${p.meses}?\n\n` +
+    `Amortização: ${formatarMoeda(parcelaCronograma.amortizacao)}\n` +
+    `Juros: ${formatarMoeda(parcelaCronograma.juros)}\n` +
+    `Valor da parcela: ${formatarMoeda(parcelaCronograma.parcela)}\n` +
+    `Saldo após: ${formatarMoeda(parcelaCronograma.saldoFinal)}`
   );
   if (!confirmado) return;
 
-  const novoCapital   = parcela.saldoFinal;
+  const novoCapital   = parcelaCronograma.saldoFinal;
   const novaParcelaAt = p.parcelaAtual + 1;
   const pagosParcelas = [...(p.pagosParcelas || []), {
-    mes: parcela.mes,
-    amortizacao: parcela.amortizacao,
-    juros: parcela.juros,
-    parcela: parcela.parcela,
+    mes: parcelaCronograma.mes,
+    amortizacao: parcelaCronograma.amortizacao,
+    juros: parcelaCronograma.juros,
+    parcela: parcelaCronograma.parcela,
     dataPagamento: new Date().toISOString()
   }];
 
-  const lucroAcumulado = (p.lucroAcumulado || 0) + parcela.juros;
+  const lucroAcumulado = (p.lucroAcumulado || 0) + parcelaCronograma.juros;
   const isUltima = novaParcelaAt > p.meses;
 
   // Se foi a última parcela, encerrar promissória
@@ -311,18 +333,25 @@ async function registrarParcelaAmortizacao(id, clienteId) {
   };
 
   // Devolve a amortização à origem
-  await devolverCapitalAOrigem(p, parcela.amortizacao);
+  await devolverCapitalAOrigem(p, parcelaCronograma.amortizacao);
 
-  await FirestoreService.atualizar('promissorias', id, atualizacao);
+  const res = await FirestoreService.atualizar('promissorias', id, atualizacao);
 
-  Object.assign(p, atualizacao);
-  await atualizarTotalCliente(clienteId);
-  await atualizarResumoPatrimonio();
+  if (res.sucesso) {
+    await atualizarTotalCliente(clienteId);
 
-  if (isUltima) {
-    mostrarToast({ tipo: 'success', titulo: 'Promissória Quitada!', mensagem: `Todas as ${p.meses} parcelas pagas. Lucro total: ${formatarMoeda(lucroAcumulado)}.` });
+    // Registra parcela no histórico
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'promissorias',
+      tipo: 'receita',
+      valor: parcelaCronograma.parcela,
+      descricao: `Amortização (Parc ${parcelaCronograma.mes}/${p.meses}): ${p.clienteNome}`,
+      data: new Date().toISOString().split('T')[0]
+    });
+
+    mostrarToast({ tipo: 'success', titulo: 'Parcela recebida!', mensagem: `Amortização de ${formatarMoeda(parcelaCronograma.parcela)} registrada.` });
   } else {
-    mostrarToast({ tipo: 'success', titulo: `Parcela ${parcela.mes} registrada!`, mensagem: `Saldo devedor restante: ${formatarMoeda(novoCapital)}.` });
+    mostrarToast({ tipo: 'danger', titulo: 'Erro ao registrar', mensagem: 'Não foi possível atualizar o banco.' });
   }
 }
 
@@ -351,21 +380,34 @@ async function registrarJurosMensais(id, clienteId) {
   }];
   const lucroAcumulado = (p.lucroAcumulado || 0) + jurosMes;
 
-  await FirestoreService.atualizar('promissorias', id, {
+  const res = await FirestoreService.atualizar('promissorias', id, {
     pagosJuros,
     lucroAcumulado,
     lucro: lucroAcumulado
   });
 
-  p.pagosJuros = pagosJuros;
-  p.lucroAcumulado = lucroAcumulado;
-  p.lucro = lucroAcumulado;
+  if (res.sucesso) {
+    p.pagosJuros = pagosJuros;
+    p.lucroAcumulado = lucroAcumulado;
+    p.lucro = lucroAcumulado;
 
-  mostrarToast({
-    tipo: 'success',
-    titulo: 'Juros registrados!',
-    mensagem: `${formatarMoeda(jurosMes)} recebidos. Lucro acumulado: ${formatarMoeda(lucroAcumulado)}.`
-  });
+    // Apenas registra o recebimento dos juros no histórico (não amortiza capital)
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'promissorias',
+      tipo: 'receita',
+      valor: jurosMes,
+      descricao: `Pagamento Juros: ${p.clienteNome}`,
+      data: new Date().toISOString().split('T')[0]
+    });
+
+    mostrarToast({
+      tipo: 'success',
+      titulo: 'Juros registrados!',
+      mensagem: `${formatarMoeda(jurosMes)} recebidos. Lucro acumulado: ${formatarMoeda(lucroAcumulado)}.`
+    });
+  } else {
+    mostrarToast({ tipo: 'danger', titulo: 'Erro ao registrar', mensagem: 'Não foi possível atualizar o banco.' });
+  }
 }
 
 /**
@@ -383,15 +425,28 @@ async function quitarCapitalJurosMensais(id, clienteId) {
 
   await devolverCapitalAOrigem(p, p.valorInvestido);
 
-  await FirestoreService.atualizar('promissorias', id, {
+  const res = await FirestoreService.atualizar('promissorias', id, {
     status: 'recebida',
     dataRecebimento: new Date().toISOString()
   });
 
-  p.status = 'recebida';
-  await atualizarTotalCliente(clienteId);
-  await atualizarResumoPatrimonio();
-  mostrarToast({ tipo: 'success', titulo: 'Capital recebido!', mensagem: `Promissória encerrada. Lucro total: ${formatarMoeda(p.lucroAcumulado || 0)}.` });
+  if (res.sucesso) {
+    p.status = 'recebida';
+    await atualizarTotalCliente(clienteId);
+
+    // Registra quitação final do capital no histórico
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'promissorias',
+      tipo: 'receita',
+      valor: p.valorInvestido,
+      descricao: `Quitação Capital: ${p.clienteNome}`,
+      data: new Date().toISOString().split('T')[0]
+    });
+
+    mostrarToast({ tipo: 'success', titulo: 'Capital recebido!', mensagem: `Promissória encerrada. Lucro total: ${formatarMoeda(p.lucroAcumulado || 0)}.` });
+  } else {
+    mostrarToast({ tipo: 'danger', titulo: 'Erro ao quitar', mensagem: 'Não foi possível atualizar o banco.' });
+  }
 }
 
 async function excluirPromissoria(id, clienteId) {
@@ -409,7 +464,7 @@ async function excluirPromissoria(id, clienteId) {
   if (res.sucesso) {
     estado.promissorias = estado.promissorias.filter(p => p.id !== id);
     await atualizarTotalCliente(clienteId);
-    await atualizarResumoPatrimonio();
+
     mostrarToast({ tipo: 'success', titulo: 'Promissória excluída', mensagem: 'A operação foi desfeita.' });
   } else {
     mostrarToast({ tipo: 'danger', titulo: 'Erro ao excluir', mensagem: 'Tente novamente.' });
@@ -1180,8 +1235,9 @@ export const PromissoriasModule = {
 
     unsubscribePromissorias = FirestoreService.escutar(
       'promissorias',
-      (promissorias) => {
+      async (promissorias) => {
         estado.promissorias = promissorias;
+        await atualizarResumoPatrimonio(); // Mantém o patrimônio sempre atualizado (Item 6)
         renderizarTelaPrincipal(container);
       },
       { ordenarPor: 'dataVencimento', direcao: 'asc' }

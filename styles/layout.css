@@ -516,5 +516,10 @@
 
   .page-container {
     padding: var(--space-4);
+    padding-bottom: calc(var(--space-8) * 2); /* Extra padding on bottom for mobile */
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 }

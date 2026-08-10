@@ -36,9 +36,14 @@ export const AuthModule = {
             <a href="#recuperar-senha" class="text-gold" style="font-size: var(--text-sm); font-weight: var(--font-medium);">Esqueceu a senha?</a>
           </div>
           
-          <button type="submit" class="btn btn-primary" style="width: 100%; margin-bottom: var(--space-6);" id="btn-submit-login">
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-bottom: var(--space-4);" id="btn-submit-login">
             <span class="material-symbols-outlined">login</span>
             Entrar
+          </button>
+          
+          <button type="button" class="btn btn-secondary" style="width: 100%; margin-bottom: var(--space-6); background: white; color: black; border: 1px solid #ddd;" id="btn-google-login">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="width: 18px; margin-right: 8px; vertical-align: middle;">
+            Entrar com Google
           </button>
           
           <p style="text-align: center; font-size: var(--text-sm); color: var(--text-muted);">
@@ -87,6 +92,24 @@ export const AuthModule = {
         btnSubmit.disabled = false;
       }
     });
+
+    const btnGoogle = document.getElementById('btn-google-login');
+    btnGoogle.addEventListener('click', async () => {
+      const textoOriginal = btnGoogle.innerHTML;
+      btnGoogle.innerHTML = '<span class="material-symbols-outlined spinning">sync</span> Entrando...';
+      btnGoogle.disabled = true;
+
+      const result = await AuthService.loginComGoogle();
+      if (result.sucesso) {
+        mostrarToast('Login realizado com sucesso', 'success');
+        window.location.hash = 'dashboard';
+        window.location.reload();
+      } else {
+        mostrarToast(result.erro, 'error');
+        btnGoogle.innerHTML = textoOriginal;
+        btnGoogle.disabled = false;
+      }
+    });
   },
 
   // ─── CADASTRO ──────────────────────────────────────────────────────────
@@ -116,9 +139,14 @@ export const AuthModule = {
             <input type="password" id="confirmaSenha" name="confirmaSenha" class="form-input" placeholder="Repita a senha" autocomplete="new-password">
           </div>
           
-          <button type="submit" class="btn btn-primary" style="width: 100%; margin-bottom: var(--space-6);" id="btn-submit-cadastro">
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-bottom: var(--space-4);" id="btn-submit-cadastro">
             <span class="material-symbols-outlined">person_add</span>
             Criar Conta
+          </button>
+          
+          <button type="button" class="btn btn-secondary" style="width: 100%; margin-bottom: var(--space-6); background: white; color: black; border: 1px solid #ddd;" id="btn-google-cadastro">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="width: 18px; margin-right: 8px; vertical-align: middle;">
+            Criar com Google
           </button>
           
           <p style="text-align: center; font-size: var(--text-sm); color: var(--text-muted);">
@@ -167,6 +195,24 @@ export const AuthModule = {
         mostrarToast(result.erro, 'error');
         btnSubmit.innerHTML = textoOriginal;
         btnSubmit.disabled = false;
+      }
+    });
+
+    const btnGoogle = document.getElementById('btn-google-cadastro');
+    btnGoogle.addEventListener('click', async () => {
+      const textoOriginal = btnGoogle.innerHTML;
+      btnGoogle.innerHTML = '<span class="material-symbols-outlined spinning">sync</span> Criando...';
+      btnGoogle.disabled = true;
+
+      const result = await AuthService.loginComGoogle(); // Google Auth handles both signup and login
+      if (result.sucesso) {
+        mostrarToast('Conta criada com sucesso!', 'success');
+        window.location.hash = 'dashboard';
+        window.location.reload();
+      } else {
+        mostrarToast(result.erro, 'error');
+        btnGoogle.innerHTML = textoOriginal;
+        btnGoogle.disabled = false;
       }
     });
   },

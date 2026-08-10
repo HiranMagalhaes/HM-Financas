@@ -146,53 +146,83 @@ function gerarItemAlerta(alerta) {
 }
 
 /**
- * Gera o HTML do mini-gráfico de barras simulado (sem biblioteca externa).
- * Representa a evolução do patrimônio nos últimos 6 meses.
- * Substituir por gráfico real (Chart.js ou canvas) quando integrar Firestore.
- *
- * @returns {string} HTML do gráfico placeholder
+ * Inicia a renderização do gráfico de evolução patrimonial real usando Chart.js
+ * Busca os últimos 6 meses da coleção patrimonio_historico.
  */
-function gerarGraficoPlaceholder() {
-  // Dados fictícios de evolução (em R$) — substituir com dados reais
-  const dados = [
-    { mes: 'Fev', valor: 38_000 },
-    { mes: 'Mar', valor: 39_500 },
-    { mes: 'Abr', valor: 38_800 },
-    { mes: 'Mai', valor: 41_200 },
-    { mes: 'Jun', valor: 43_700 },
-    { mes: 'Jul', valor: 45_200 },
-  ];
+async function renderizarGraficoReal() {
+  const canvas = document.getElementById('chart-evolucao');
+  if (!canvas) return;
 
-  const maximo = Math.max(...dados.map(d => d.valor));
+  const res = await FirestoreService.listar('patrimonio_historico', { ordenarPor: 'mesAno', direcao: 'desc', maxLimite: 6 });
+  
+  let labels = [];
+  let data = [];
 
-  // Gera cada barra como percentual da altura máxima
-  const barras = dados.map((d, i) => {
-    const altura = Math.round((d.valor / maximo) * 100);
-    const isUltimo = i === dados.length - 1;
-    return `
-      <div class="grafico-col">
-        <div class="grafico-barra-wrap">
-          <div class="grafico-barra ${isUltimo ? 'ativa' : ''}"
-               style="height: ${altura}%"
-               title="${d.mes}: ${formatarMoeda(d.valor)}">
-          </div>
-        </div>
-        <span class="grafico-label">${d.mes}</span>
-      </div>
-    `;
-  }).join('');
+  if (res.sucesso && res.dados.length > 0) {
+    // A ordem vem desc (mais recente primeiro), precisamos reverter para o gráfico (mais antigo para mais recente)
+    const historico = res.dados.reverse();
+    labels = historico.map(h => {
+      // mesAno é 'YYYY-MM'. Vamos exibir ex: 'Ago/26'
+      const [ano, mes] = h.mesAno.split('-');
+      const dataStr = new Date(ano, mes - 1, 1);
+      return dataStr.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '').replace(' de ', '/');
+    });
+    data = historico.map(h => {
+      return (h.hmcred || 0) + (h.dinheiro || 0) + (h.promissorias || 0) + (h.cartoes || 0);
+    });
+  } else {
+    // Fallback se não houver dados ainda
+    const mesAtual = new Date();
+    labels = [mesAtual.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '').replace(' de ', '/')];
+    const patAtual = document.querySelector('.card-clickable[data-nav="patrimonio"] .stat-card-value');
+    const valorPatAtual = patAtual ? parseFloat(patAtual.textContent.replace(/[R$\s\.]/g, '').replace(',', '.')) : 0;
+    data = [valorPatAtual || 0];
+  }
 
-  return `
-    <div class="grafico-container" aria-label="Gráfico de evolução do patrimônio (dados mockados)">
-      <div class="grafico-barras">
-        ${barras}
-      </div>
-      <p class="grafico-nota">
-        <span class="material-symbols-outlined icon-sm text-muted">info</span>
-        Dados simulados · Integração com Firestore nos próximos módulos
-      </p>
-    </div>
-  `;
+  // Verifica se já existe um gráfico nesta canvas e destroi para evitar sobreposição
+  if (window.myChartEvolucao) {
+    window.myChartEvolucao.destroy();
+  }
+
+  const ctx = canvas.getContext('2d');
+  
+  // Apenas renderiza se o Chart.js estiver disponível (carregado do CDN)
+  if (typeof Chart !== 'undefined') {
+    window.myChartEvolucao = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Patrimônio',
+          data: data,
+          backgroundColor: '#d4af37',
+          borderRadius: 4,
+          barThickness: 'flex',
+          maxBarThickness: 40
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => formatarMoeda(context.raw)
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => 'R$ ' + (value / 1000) + 'k'
+            }
+          }
+        }
+      }
+    });
+  }
 }
 
 /**
@@ -225,12 +255,16 @@ let handleNotificacoesAtualizadas = null;
 export const DashboardModule = {
 
   /**
-   * Renderiza a tela completa do Dashboard.
+   * Ponto de entrada do módulo Dashboard.
+   * Chamado pelo router.js.
    *
-   * @param {HTMLElement} container - Elemento #main-content onde injetar o HTML.
+   * Fluxo:
+   *   1. Verifica se usuário está autenticado
+   *   2. Busca saldo total (Módulo Dinheiro), patrimônio total, HMCRED e Promissórias
+   *   3. Renderiza a estrutura do Dashboard com indicadores e skeleton loader
+   *   4. Inicia listeners assíncronos para histórico de lançamentos e gráfico
    *
-   * PARA ALTERAR: edite as seções marcadas com comentários específicos.
-   * Cada bloco HTML é gerado por uma função auxiliar acima.
+   * @param {HTMLElement} container - Onde a view será injetada
    */
   async renderDashboard(container) {
     // Tela de carregamento enquanto busca do Firestore
@@ -502,8 +536,8 @@ export const DashboardModule = {
 
           <div class="card" id="card-movimentacoes">
             <div class="card-body" style="padding: var(--space-4) var(--space-6);">
-              <div class="tx-list" role="list" aria-label="Últimas movimentações">
-                ${movimentacoesHtml}
+              <div class="tx-list" id="lista-lancamentos-recentes" role="list" aria-label="Últimas movimentações">
+                <p class="text-muted text-sm"><span class="material-symbols-outlined icon-sm spin">sync</span> Carregando histórico...</p>
               </div>
             </div>
           </div>
@@ -515,8 +549,8 @@ export const DashboardModule = {
           </div>
 
           <div class="card" id="card-grafico">
-            <div class="card-body">
-              ${gerarGraficoPlaceholder()}
+            <div class="card-body" style="height: 300px;">
+              <canvas id="chart-evolucao" width="100%" height="250"></canvas>
             </div>
           </div>
 
@@ -578,7 +612,37 @@ export const DashboardModule = {
    * @param {HTMLElement} container - O container do Dashboard
    */
   _registrarEventos(container) {
+    // Inicia a renderização do gráfico real
+    renderizarGraficoReal();
+
+    // Listener para Lançamentos (Histórico Consolidado)
+    if (window.unsubscribeLancamentosHist) {
+      window.unsubscribeLancamentosHist();
+    }
+    
+    window.unsubscribeLancamentosHist = FirestoreService.escutar('lancamentos_hist', (lancamentos) => {
+      const listaContainer = document.getElementById('lista-lancamentos-recentes');
+      if (!listaContainer) return;
+      
+      if (lancamentos.length === 0) {
+        listaContainer.innerHTML = '<p class="text-muted text-sm text-center" style="margin: var(--space-4) 0;">Sem movimentações recentes.</p>';
+        return;
+      }
+      
+      listaContainer.innerHTML = lancamentos.map(tx => {
+        // Mapear tipos do bd ('receita', 'despesa', etc)
+        const itemMockado = {
+          tipo: tx.tipo,
+          descricao: tx.descricao,
+          valor: tx.valor,
+          data: tx.data || tx.criadoEm?.toDate()?.toISOString()?.split('T')[0] || new Date().toISOString().split('T')[0]
+        };
+        return gerarItemMovimentacao(itemMockado);
+      }).join('');
+    }, { ordenarPor: 'criadoEm', direcao: 'desc', maxLimite: 8 });
+
     // ── Navegação pelos atalhos rápidos e cards clicáveis ────────────────
+
     // Todos os elementos com [data-nav] navegam para a rota especificada
     container.querySelectorAll('[data-nav]').forEach(elemento => {
       const rota = elemento.getAttribute('data-nav');

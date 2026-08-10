@@ -21,6 +21,8 @@ service cloud.firestore {
     //   - cartoes/configuracao       → totais de limite e fatura (Módulo 6B)
     //   - cartoes_lista/{id}         → cada cartão de crédito (Módulo 6B)
     //   - cartoes_compras/{id}       → compras parceladas com baixa individual (Módulo 6B)
+    //   - lancamentos_hist/{id}      → histórico consolidado de todas movimentações
+    //   - patrimonio_historico/{id}  → snapshots mensais para o gráfico real
     //   - clientes/{id}              → cadastro de clientes/devedores (Módulo 7)
     //   - cobrancas/{id}             → cobranças vinculadas aos clientes (Módulo 7)
     //   - configuracoes/preferencias → preferências do usuário como tema (Módulo 10)

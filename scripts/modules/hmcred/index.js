@@ -229,6 +229,17 @@ async function criarOperacao(evento) {
   const resOp = await FirestoreService.criar('hmcred_operacoes', novaOperacao);
   if (resOp.sucesso) {
     if (tipoOperacao === 'credito') await salvarConfiguracao();
+    
+    // Registra a concessão no histórico
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'hmcred',
+      tipo: 'despesa', // Dinheiro saiu do HMCRED/Cartão para o cliente
+      valor: valorConcedido,
+      descricao: `Crédito Concedido: ${novaOperacao.destino}`,
+      categoria: 'HMCRED - Concessão',
+      data: new Date().toISOString().split('T')[0]
+    });
+
     fecharModal('modal-nova-operacao');
     form.reset();
     // Reseta tabs para crédito
@@ -273,8 +284,29 @@ async function marcarComoPaga(id) {
     estado.configuracao.limiteTotal += lucro;
 
     await salvarConfiguracao();
+
+    // Registra o recebimento no histórico
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'hmcred',
+      tipo: 'receita', // Dinheiro voltou com lucro
+      valor: operacao.valorReceber,
+      descricao: `Recebimento HMCRED: ${operacao.destino}`,
+      categoria: 'HMCRED - Recebimento',
+      data: new Date().toISOString().split('T')[0]
+    });
+
     mostrarToast({ tipo: 'success', titulo: 'Operação paga!', mensagem: `${formatarMoeda(operacao.valorReceber)} devolvido ao capital HMCRED.` });
   } else if (operacao.tipoOperacao === 'retirada_cartao') {
+    // Registra o recebimento no histórico
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'hmcred',
+      tipo: 'receita',
+      valor: operacao.valorConcedido,
+      descricao: `Recebimento Cartão: ${operacao.destino}`,
+      categoria: 'HMCRED - Retorno Cartão',
+      data: new Date().toISOString().split('T')[0]
+    });
+
     mostrarToast({ tipo: 'success', titulo: 'Operação paga!', mensagem: `Retirada via cartão finalizada. Lembre-se de registrar a entrada na conta desejada (Dinheiro).` });
   }
 }
