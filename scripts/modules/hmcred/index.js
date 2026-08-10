@@ -15,7 +15,7 @@
 import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, parseMoeda, gerarIdIdempotente } from '../../utils/formatters.js';
-import { mostrarToast, adicionarMeses } from '../../utils/helpers.js';
+import { mostrarToast } from '../../utils/helpers.js';
 import { Router } from '../../router.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────

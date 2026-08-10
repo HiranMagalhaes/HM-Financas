@@ -115,7 +115,7 @@ function dispararNotificacoesNativas(lista) {
 
         new Notification(title, {
           body,
-          icon: '/assets/icons/icon-192x192.png',
+          icon: '/assets/icons/icon-192.png',
           tag: 'hm-financas-alert', // impede que acumulem várias
           renotify: true
         });
