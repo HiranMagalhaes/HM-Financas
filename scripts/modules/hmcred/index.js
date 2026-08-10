@@ -14,8 +14,8 @@
 
 import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
-import { formatarMoeda, formatarData, parseMoeda, gerarIdIdempotente } from '../../utils/formatters.js';
-import { mostrarToast } from '../../utils/helpers.js';
+import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
+import { mostrarToast, gerarIdUnico } from '../../utils/helpers.js';
 import { Router } from '../../router.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -278,7 +278,7 @@ function gerarListaParcelas(dataInicial, totalParcelas, valorPorParcela) {
     dataAtual.setMonth(dataAtual.getMonth() + 1);
     
     parcelas.push({
-      id: gerarIdIdempotente() + '_' + i,
+      id: gerarIdUnico() + '_' + i,
       numero: i,
       valor: valorPorParcela,
       vencimento: dataAtual.toISOString().split('T')[0],
