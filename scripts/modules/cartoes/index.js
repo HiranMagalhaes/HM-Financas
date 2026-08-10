@@ -24,7 +24,7 @@
 
 import { AuthService }      from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
-import { formatarMoeda, parseMoeda } from '../../utils/formatters.js';
+import { formatarMoeda, parseMoeda, formatarData } from '../../utils/formatters.js';
 import { mostrarToast }     from '../../utils/helpers.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ import { mostrarToast }     from '../../utils/helpers.js';
 ───────────────────────────────────────────────────────────────────────────── */
 let estado = {
   cartoes:    [],  // Lista de cartões carregados do Firestore
+  compras:    [],  // Lista de compras parceladas carregadas do Firestore
   carregando: true
 };
 
@@ -269,12 +270,25 @@ function abrirModalLancamento(idCartao, tipoAcao) {
     }
   }
 
+  // Mostra/oculta o campo de parcelas conforme o tipo da ação
+  const secaoParcelas = document.getElementById('lancamento-secao-parcelas');
+  if (secaoParcelas) {
+    secaoParcelas.style.display = tipoAcao === 'gasto' ? 'block' : 'none';
+  }
+  // Reseta parcelas para 1x (à vista)
+  const selectParcelas = document.getElementById('lancamento-parcelas');
+  if (selectParcelas) selectParcelas.value = '1';
+  // Limpa campo de descrição
+  const inputDescricao = document.getElementById('lancamento-descricao');
+  if (inputDescricao) inputDescricao.value = '';
+
   abrirModal('modal-lancamento-cartao');
 }
 
 /**
  * Efetua um lançamento em um cartão (gasto ou pagamento de fatura).
  * Recalcula o valorUsado e persiste no Firestore.
+ * Para gastos parcelados (> 1x): salva na subcolleção cartoes_compras.
  * Chamada pelo evento submit do form#form-lancamento-cartao.
  *
  * @param {SubmitEvent} evento
@@ -287,6 +301,8 @@ async function registrarLancamento(evento) {
   const idCartao  = formData.get('cartaoId');
   const valor     = parseMoeda(formData.get('valor'));
   const tipoAcao  = formData.get('tipoAcao'); // 'gasto' ou 'pagamento'
+  const parcelas  = parseInt(formData.get('parcelas') || '1', 10);
+  const descricao = (formData.get('descricao') || '').trim();
 
   const cartao = estado.cartoes.find(c => c.id === idCartao);
   if (!cartao) return;
@@ -318,21 +334,120 @@ async function registrarLancamento(evento) {
   const btnSubmit = form.querySelector('button[type="submit"]');
   if (btnSubmit) btnSubmit.disabled = true;
 
+  // Atualiza a fatura do cartão em qualquer caso
   const res = await FirestoreService.atualizar('cartoes_lista', idCartao, { valorUsado: novoValorUsado });
+
+  // Se é um gasto parcelado (> 1 parcela), registra as parcelas individualmente
+  if (res.sucesso && tipoAcao === 'gasto' && parcelas > 1) {
+    const valorParcela = parseFloat((valor / parcelas).toFixed(2));
+    const hoje = new Date();
+
+    // Gera array de parcelas com datas mensais
+    const listasParcelas = Array.from({ length: parcelas }, (_, i) => {
+      const venc = new Date(hoje);
+      venc.setMonth(hoje.getMonth() + i + 1);
+      return {
+        numero: i + 1,
+        valor: valorParcela,
+        vencimento: venc.toISOString().split('T')[0],
+        pago: false,
+        dataPagamento: null
+      };
+    });
+
+    const compra = {
+      cartaoId: idCartao,
+      cartaoNome: cartao.nome,
+      descricao: descricao || 'Compra parcelada',
+      valorTotal: valor,
+      numeroParcelas: parcelas,
+      valorParcela,
+      parcelas: listasParcelas,
+      parcelasPagas: 0,
+      concluida: false,
+      dataCompra: hoje.toISOString().split('T')[0]
+    };
+
+    await FirestoreService.criar('cartoes_compras', compra);
+  }
 
   if (btnSubmit) btnSubmit.disabled = false;
 
   if (res.sucesso) {
     fecharModal('modal-lancamento-cartao');
     form.reset();
+    // Reseta o select de parcelas para 1x
+    const selectParcelas = document.getElementById('lancamento-parcelas');
+    if (selectParcelas) selectParcelas.value = '1';
     const labelTipo = tipoAcao === 'gasto' ? 'Gasto registrado!' : 'Pagamento realizado!';
     const detalhes  = tipoAcao === 'gasto'
-      ? `${formatarMoeda(valor)} adicionado à fatura de "${cartao.nome}".`
+      ? (parcelas > 1
+          ? `${formatarMoeda(valor)} em ${parcelas}x de ${formatarMoeda(valor / parcelas)} em "${cartao.nome}".`
+          : `${formatarMoeda(valor)} adicionado à fatura de "${cartao.nome}".`)
       : `${formatarMoeda(valor)} pago na fatura de "${cartao.nome}".`;
     mostrarToast({ tipo: 'success', titulo: labelTipo, mensagem: detalhes });
   } else {
     mostrarToast({ tipo: 'danger', titulo: 'Erro no lançamento', mensagem: 'Tente novamente em instantes.' });
   }
+}
+
+/**
+ * Marca uma parcela específica de uma compra parcelada como PAGA.
+ * Reduz o valorUsado do cartão pelo valor da parcela.
+ * Se todas as parcelas estiverem pagas, marca a compra como concluída.
+ *
+ * @param {string} compraId - ID do documento na subcolleção cartoes_compras
+ * @param {number} indiceParcela - Índice (0-based) da parcela no array
+ */
+async function marcarParcelaPaga(compraId, indiceParcela) {
+  const compra = estado.compras.find(c => c.id === compraId);
+  if (!compra) return;
+
+  const parcela = compra.parcelas[indiceParcela];
+  if (!parcela || parcela.pago) {
+    mostrarToast({ tipo: 'warning', titulo: 'Parcela já paga', mensagem: 'Esta parcela já foi registrada como paga.' });
+    return;
+  }
+
+  if (!confirm(`Confirmar pagamento da parcela ${parcela.numero}/${compra.numeroParcelas} de ${formatarMoeda(parcela.valor)}?`)) return;
+
+  // Atualiza o array de parcelas em memória
+  const novasParcelas = compra.parcelas.map((p, i) => {
+    if (i === indiceParcela) {
+      return { ...p, pago: true, dataPagamento: new Date().toISOString().split('T')[0] };
+    }
+    return p;
+  });
+
+  const novasParcelasPagas = novasParcelas.filter(p => p.pago).length;
+  const concluida = novasParcelasPagas === compra.numeroParcelas;
+
+  // Persiste as parcelas atualizadas
+  const resCompra = await FirestoreService.atualizar('cartoes_compras', compraId, {
+    parcelas: novasParcelas,
+    parcelasPagas: novasParcelasPagas,
+    concluida
+  });
+
+  if (!resCompra.sucesso) {
+    mostrarToast({ tipo: 'danger', titulo: 'Erro', mensagem: 'Não foi possível atualizar a parcela.' });
+    return;
+  }
+
+  // Reduz a fatura do cartão pelo valor da parcela
+  const cartao = estado.cartoes.find(c => c.id === compra.cartaoId);
+  if (cartao) {
+    const novoValorUsado = Math.max(0, (cartao.valorUsado || 0) - parcela.valor);
+    await FirestoreService.atualizar('cartoes_lista', compra.cartaoId, { valorUsado: novoValorUsado });
+  }
+
+  mostrarToast({
+    tipo: 'success',
+    titulo: 'Parcela paga!',
+    mensagem: concluida
+      ? `Compra "${compra.descricao}" totalmente quitada! ✅`
+      : `Parcela ${parcela.numero}/${compra.numeroParcelas} de ${formatarMoeda(parcela.valor)} registrada.`
+  });
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -488,12 +603,112 @@ function renderizarCartao(cartao) {
             </button>
           </div>
 
+          <!-- Seção de Compras Parceladas -->
+          ${renderizarComprasParceladas(cartao.id)}
+
         </div>
       </div>
 
     </div>
   `;
 }
+
+/**
+ * Gera o HTML da seção de compras parceladas de um cartão específico.
+ * Exibe apenas as compras não concluídas com botões de baixa por parcela.
+ *
+ * @param {string} cartaoId - ID do cartão
+ * @returns {string} HTML da seção de parcelas
+ */
+function renderizarComprasParceladas(cartaoId) {
+  const comprasDoCartao = estado.compras.filter(
+    c => c.cartaoId === cartaoId && !c.concluida
+  );
+
+  if (comprasDoCartao.length === 0) return '';
+
+  const itensHtml = comprasDoCartao.map(compra => {
+    const parcelasHtml = compra.parcelas.map((parcela, idx) => {
+      if (parcela.pago) {
+        // Parcela já paga — exibe em cinza com check
+        return `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default); opacity: 0.5;">
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-success);">check_circle</span>
+              <span style="font-size: var(--text-xs); color: var(--text-muted);">
+                Parcela ${parcela.numero}/${compra.numeroParcelas}
+                &middot; Venc. ${formatarData(parcela.vencimento)}
+              </span>
+            </div>
+            <span class="value-sensitive" style="font-size: var(--text-xs); color: var(--text-muted);">${formatarMoeda(parcela.valor)}</span>
+          </div>
+        `;
+      }
+
+      // Parcela pendente
+      const hoje = new Date().toISOString().split('T')[0];
+      const atrasada = parcela.vencimento < hoje;
+      const corVenc = atrasada ? 'var(--color-danger)' : 'var(--text-muted)';
+
+      return `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default);">
+          <div style="display: flex; align-items: center; gap: var(--space-2);">
+            <span class="material-symbols-outlined" style="font-size: 16px; color: ${corVenc};">${atrasada ? 'error' : 'schedule'}</span>
+            <div>
+              <p style="margin: 0; font-size: var(--text-xs); color: var(--text-secondary); font-weight: var(--font-medium);">Parcela ${parcela.numero}/${compra.numeroParcelas}</p>
+              <p style="margin: 0; font-size: var(--text-xs); color: ${corVenc};">${atrasada ? 'Vencida em' : 'Vence em'} ${formatarData(parcela.vencimento)}</p>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: var(--space-2);">
+            <span class="value-sensitive" style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-danger);">${formatarMoeda(parcela.valor)}</span>
+            <button
+              class="btn btn-ghost btn-sm"
+              data-acao="pagar-parcela"
+              data-compra-id="${compra.id}"
+              data-parcela-idx="${idx}"
+              aria-label="Marcar parcela ${parcela.numero} como paga"
+              style="padding: 4px 8px; font-size: var(--text-xs); border-color: var(--color-success); color: var(--color-success);"
+            >
+              <span class="material-symbols-outlined" style="font-size: 14px;">payments</span>
+              Pago
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const pagas = compra.parcelas.filter(p => p.pago).length;
+
+    return `
+      <div style="margin-top: var(--space-3); background: var(--bg-overlay); border-radius: var(--radius-md); padding: var(--space-3); border: 1px solid var(--border-default);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+          <div style="display: flex; align-items: center; gap: var(--space-2);">
+            <span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-info);">splitscreen</span>
+            <span style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--text-primary);">${compra.descricao}</span>
+          </div>
+          <span class="badge badge-neutral" style="font-size: 10px;">${pagas}/${compra.numeroParcelas} pagas</span>
+        </div>
+        <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-2);">
+          Total: <span class="value-sensitive">${formatarMoeda(compra.valorTotal)}</span>
+          &middot; ${formatarMoeda(compra.valorParcela)}/parcela
+        </div>
+        ${parcelasHtml}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border-default);">
+      <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);">
+        <span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-info);">receipt_long</span>
+        <h4 style="margin: 0; font-size: var(--text-sm); font-weight: var(--font-semibold);">Compras Parceladas</h4>
+        <span class="badge badge-info" style="font-size: 10px;">${comprasDoCartao.length} em aberto</span>
+      </div>
+      ${itensHtml}
+    </div>
+  `;
+}
+
 
 /**
  * Gera o HTML do empty state elegante — exibido quando não há cartões cadastrados.
@@ -668,6 +883,28 @@ function renderizarModais() {
                      placeholder="0,00" required inputmode="decimal"
                      style="font-size: var(--text-2xl); text-align: center; font-weight: var(--font-bold);">
             </div>
+
+            <!-- Seção de Parcelamento (só visível para gastos) -->
+            <div id="lancamento-secao-parcelas" style="display: none;">
+              <div class="form-group">
+                <label class="form-label" for="lancamento-descricao">Descrição da compra</label>
+                <input type="text" id="lancamento-descricao" name="descricao" class="form-input"
+                       placeholder="Ex: Supermercado, Eletrônico, Roupa..." autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="lancamento-parcelas">
+                  <span class="material-symbols-outlined icon-sm" style="vertical-align: middle;">splitscreen</span>
+                  Parcelamento
+                </label>
+                <select id="lancamento-parcelas" name="parcelas" class="form-input form-select">
+                  <option value="1">1x (à vista)</option>
+                  ${Array.from({ length: 23 }, (_, i) => `<option value="${i + 2}">${i + 2}x sem juros</option>`).join('')}
+                </select>
+                <small class="text-muted" style="display: block; margin-top: 4px;">
+                  Compras parceladas podem ter baixa individual por parcela.
+                </small>
+              </div>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-lancamento-cartao').classList.remove('open')">Cancelar</button>
@@ -807,6 +1044,13 @@ function registrarEventosTela(container) {
       if (acao === 'pagamento') abrirModalLancamento(id, 'pagamento');
       if (acao === 'editar'   ) abrirModalEdicao(id);
       if (acao === 'excluir'  ) excluirCartao(id);
+
+      // Baixa de parcela individual
+      if (acao === 'pagar-parcela') {
+        const compraId    = btn.getAttribute('data-compra-id');
+        const parcelaIdx  = parseInt(btn.getAttribute('data-parcela-idx'), 10);
+        marcarParcelaPaga(compraId, parcelaIdx);
+      }
     });
   });
 
@@ -856,12 +1100,22 @@ export const CartoesModule = {
       unsubscribeCartoes = null;
     }
 
+    // Busca inicial das compras parceladas (snapshot único)
+    const resCompras = await FirestoreService.listar('cartoes_compras');
+    if (resCompras.sucesso) {
+      estado.compras = resCompras.dados;
+    }
+
     // Listener em tempo real: qualquer mudança na coleção aciona o callback
     unsubscribeCartoes = FirestoreService.escutar(
       'cartoes_lista',
       async (cartoes) => {
         // Atualiza lista em memória com os dados do Firestore
         estado.cartoes = cartoes;
+
+        // Também recarrega as compras parceladas para refletir baixas
+        const resC = await FirestoreService.listar('cartoes_compras');
+        if (resC.sucesso) estado.compras = resC.dados;
 
         // Recalcula totais e persiste no Patrimônio
         await sincronizarSaldos();

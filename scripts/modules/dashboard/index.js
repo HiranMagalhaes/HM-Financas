@@ -241,21 +241,24 @@ export const DashboardModule = {
       </div>
     `;
 
+    // Variáveis locais para acumular dados do Firestore
+    let promissoriasAtivas = 0;
+    let lucroEstimado = 0;
+    let promissoriasRes = { sucesso: false, dados: [] };
+
     // Buscar dados reais de Promissórias
-    const promissoriasRes = await FirestoreService.listar('promissorias');
-    if (promissoriasRes.sucesso) {
-      let promissoriasAtivas = 0;
-      let lucroEstimado = 0;
-      
-      promissoriasRes.dados.forEach(p => {
-        if (p.status !== 'recebida') {
-          promissoriasAtivas += (p.valorInvestido || 0);
-          lucroEstimado += (p.lucro || 0);
-        }
-      });
-      
-      mockDashboardData.promissoriasAtivas = promissoriasAtivas;
-      mockDashboardData.lucroEstimado = lucroEstimado;
+    try {
+      promissoriasRes = await FirestoreService.listar('promissorias');
+      if (promissoriasRes.sucesso) {
+        promissoriasRes.dados.forEach(p => {
+          if (p.status !== 'recebida') {
+            promissoriasAtivas += (p.valorInvestido || 0);
+            lucroEstimado += (p.lucro || 0);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[Dashboard] Falha ao buscar promissórias:', e);
     }
 
     // Obter dados do usuário autenticado via AuthService
@@ -310,12 +313,20 @@ export const DashboardModule = {
     const varPromissorias = 0;
     const varRecebimentos = 0;
 
-    // Obter dados adicionais do banco
-    const [resDinheiro, resPatrimonio, resHmcred] = await Promise.all([
-      FirestoreService.listar('dinheiro_contas'),
-      FirestoreService.obter('patrimonio', 'resumo'),
-      FirestoreService.listar('hmcred_operacoes')
-    ]);
+    // Obter dados adicionais do banco (com proteção contra falhas individuais)
+    let resDinheiro   = { sucesso: false, dados: [] };
+    let resPatrimonio = { sucesso: false, dados: null };
+    let resHmcred     = { sucesso: false, dados: [] };
+
+    try {
+      [resDinheiro, resPatrimonio, resHmcred] = await Promise.all([
+        FirestoreService.listar('dinheiro_contas'),
+        FirestoreService.obter('patrimonio', 'resumo'),
+        FirestoreService.listar('hmcred_operacoes')
+      ]);
+    } catch (e) {
+      console.warn('[Dashboard] Falha ao buscar dados financeiros:', e);
+    }
 
     let saldoTotal = 0;
     if (resDinheiro.sucesso) {

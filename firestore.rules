@@ -20,6 +20,7 @@ service cloud.firestore {
     //   - dinheiro_contas/{id}       → cada conta bancária/caixa (Módulo 6A)
     //   - cartoes/configuracao       → totais de limite e fatura (Módulo 6B)
     //   - cartoes_lista/{id}         → cada cartão de crédito (Módulo 6B)
+    //   - cartoes_compras/{id}       → compras parceladas com baixa individual (Módulo 6B)
     //   - clientes/{id}              → cadastro de clientes/devedores (Módulo 7)
     //   - cobrancas/{id}             → cobranças vinculadas aos clientes (Módulo 7)
     //   - configuracoes/preferencias → preferências do usuário como tema (Módulo 10)
