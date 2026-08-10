@@ -14,8 +14,8 @@
 
 import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
-import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
-import { mostrarToast } from '../../utils/helpers.js';
+import { formatarMoeda, formatarData, parseMoeda, gerarIdIdempotente } from '../../utils/formatters.js';
+import { mostrarToast, adicionarMeses } from '../../utils/helpers.js';
 import { Router } from '../../router.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -184,7 +184,8 @@ async function criarOperacao(evento) {
       dataConcessao: formData.get('dataConcessao'),
       dataPrevista: formData.get('dataPrevista'),
       tipoOperacao: 'retirada_cartao',
-      status: 'aberto'
+      status: 'aberto',
+      listaParcelas: gerarListaParcelas(formData.get('dataConcessao'), parcelas, valorParcela)
     };
   } else {
     // Crédito padrão com juros
@@ -206,7 +207,8 @@ async function criarOperacao(evento) {
       dataConcessao: formData.get('dataConcessao'),
       dataPrevista: formData.get('dataPrevista'),
       tipoOperacao: 'credito',
-      status: 'aberto'
+      status: 'aberto',
+      listaParcelas: gerarListaParcelas(formData.get('dataConcessao'), meses || 1, valorReceber / (meses || 1))
     };
   }
 
@@ -262,6 +264,96 @@ async function criarOperacao(evento) {
   }
 
   if (btnSubmit) btnSubmit.disabled = false;
+}
+
+/**
+ * Função auxiliar para gerar as parcelas de uma operação (Mês a Mês).
+ */
+function gerarListaParcelas(dataInicial, totalParcelas, valorPorParcela) {
+  const parcelas = [];
+  let dataAtual = new Date(dataInicial + 'T12:00:00Z');
+  
+  for (let i = 1; i <= totalParcelas; i++) {
+    // Adiciona 1 mês para a primeira parcela (ou usa dataInicial para a vista? Vamos usar +1 mês como padrão)
+    dataAtual.setMonth(dataAtual.getMonth() + 1);
+    
+    parcelas.push({
+      id: gerarIdIdempotente() + '_' + i,
+      numero: i,
+      valor: valorPorParcela,
+      vencimento: dataAtual.toISOString().split('T')[0],
+      pago: false
+    });
+  }
+  return parcelas;
+}
+
+/**
+ * Paga uma parcela individualmente.
+ */
+async function pagarParcela(idOperacao, idParcela) {
+  const operacao = estado.operacoes.find(op => op.id === idOperacao);
+  if (!operacao) return;
+
+  // Garante que listaParcelas existe (migração retroativa)
+  if (!operacao.listaParcelas) {
+    operacao.listaParcelas = gerarListaParcelas(operacao.dataConcessao, operacao.parcelas || operacao.meses || 1, operacao.valorParcela || operacao.valorReceber);
+  }
+
+  const parcela = operacao.listaParcelas.find(p => p.id === idParcela);
+  if (!parcela || parcela.pago) return;
+
+  if (!confirm(`Deseja marcar a Parcela ${parcela.numero} (${formatarMoeda(parcela.valor)}) como paga?`)) return;
+
+  parcela.pago = true;
+  parcela.dataPagamento = new Date().toISOString();
+
+  // Verifica se todas as parcelas foram pagas para fechar a operação
+  const todasPagas = operacao.listaParcelas.every(p => p.pago);
+  
+  const updates = { listaParcelas: operacao.listaParcelas };
+  if (todasPagas) {
+    updates.status = 'pago';
+    updates.dataPagamento = new Date().toISOString();
+  }
+
+  await FirestoreService.atualizar('hmcred_operacoes', idOperacao, updates);
+
+  // Historico e capital
+  if (operacao.tipoOperacao === 'credito') {
+    estado.configuracao.capitalDisponivel += parcela.valor;
+    
+    // Lucro pro-rata? Aqui é complexo, o lucro foi total lá no marcarComoPaga.
+    // Vamos adicionar o lucro proporcional ao pagar cada parcela?
+    // Em marcarComoPaga antigo: lucro = operacao.valorReceber - operacao.valorConcedido
+    const lucroTotal = operacao.valorReceber - operacao.valorConcedido;
+    const lucroPorParcela = lucroTotal / (operacao.meses || 1);
+    estado.configuracao.limiteTotal += lucroPorParcela;
+
+    await salvarConfiguracao();
+
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'hmcred',
+      tipo: 'receita',
+      valor: parcela.valor,
+      descricao: `Parc. ${parcela.numero} HMCRED: ${operacao.destino}`,
+      categoria: 'HMCRED - Recebimento',
+      data: new Date().toISOString().split('T')[0]
+    });
+  } else {
+    // Retirada Cartão
+    await FirestoreService.criar('lancamentos_hist', {
+      modulo: 'hmcred',
+      tipo: 'receita',
+      valor: parcela.valor,
+      descricao: `Parc. ${parcela.numero} Cartão: ${operacao.destino}`,
+      categoria: 'HMCRED - Retorno Cartão',
+      data: new Date().toISOString().split('T')[0]
+    });
+  }
+
+  mostrarToast({ tipo: 'success', titulo: 'Parcela paga!', mensagem: `A parcela ${parcela.numero} foi baixada.` });
+  // O dashboard re-renderizará automaticamente
 }
 
 /**
@@ -542,14 +634,52 @@ function renderizarLinhaOperacao(op) {
       <td>${formatarData(op.dataPrevista)}</td>
       <td>${badges[op.status] || op.status}</td>
       <td class="text-right">
+        <button class="btn btn-ghost btn-icon text-info" title="Ver Parcelas" onclick="document.getElementById('parcelas-${op.id}').style.display = document.getElementById('parcelas-${op.id}').style.display === 'none' ? 'table-row' : 'none'">
+          <span class="material-symbols-outlined">expand_more</span>
+        </button>
         ${op.status !== 'pago' ? `
-          <button class="btn btn-ghost btn-icon text-success" title="Marcar como paga" data-acao="pagar" data-id="${op.id}">
-            <span class="material-symbols-outlined">check_circle</span>
+          <button class="btn btn-ghost btn-icon text-success" title="Pagar operação total" data-acao="pagar" data-id="${op.id}">
+            <span class="material-symbols-outlined">payments</span>
           </button>
         ` : ''}
         <button class="btn btn-ghost btn-icon text-danger" title="Excluir operação" data-acao="excluir" data-id="${op.id}">
           <span class="material-symbols-outlined">delete</span>
         </button>
+      </td>
+    </tr>
+    <!-- Linha expansível das parcelas -->
+    <tr id="parcelas-${op.id}" style="display: none; background: var(--bg-surface);">
+      <td colspan="6" style="padding: var(--space-4); border-top: none;">
+        <div style="background: var(--bg-base); border-radius: var(--radius-md); padding: var(--space-4); border: 1px solid var(--border-subtle);">
+          <h4 style="margin-top: 0; margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--text-muted);">
+            Parcelas da Operação
+          </h4>
+          <div style="display: grid; gap: var(--space-2);">
+            ${op.listaParcelas ? op.listaParcelas.map(p => `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) var(--space-3); background: var(--bg-surface); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <div>
+                  <span style="font-weight: var(--font-medium); margin-right: var(--space-2);">Parc. ${p.numero}</span>
+                  <span class="value-sensitive text-success" style="font-weight: bold;">${formatarMoeda(p.valor)}</span>
+                  <span style="color: var(--text-muted); font-size: var(--text-xs); margin-left: var(--space-2);">Vence em: ${formatarData(p.vencimento)}</span>
+                </div>
+                <div>
+                  ${p.pago ? `
+                    <span class="badge badge-success">Paga</span>
+                  ` : `
+                    <button class="btn btn-sm btn-ghost text-success" style="padding: 4px 8px;" data-acao="pagar-parcela" data-id-op="${op.id}" data-id-parc="${p.id}">
+                      <span class="material-symbols-outlined icon-sm">check</span>
+                      Dar Baixa
+                    </button>
+                  `}
+                </div>
+              </div>
+            `).join('') : `
+              <div style="text-align: center; color: var(--text-muted); padding: var(--space-2); font-size: var(--text-sm);">
+                Parcelas não geradas para esta operação antiga. <button class="btn btn-sm btn-ghost text-info" onclick="gerarRetroativoEAtualizar('${op.id}')">Gerar agora</button>
+              </div>
+            `}
+          </div>
+        </div>
       </td>
     </tr>
   `;
@@ -751,13 +881,29 @@ function renderizarTelaPrincipal(container) {
 
   // Listeners de ações da tabela (delegação de eventos)
   container.querySelectorAll('[data-acao]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
       const acao = btn.getAttribute('data-acao');
-      const id   = btn.getAttribute('data-id');
-      if (acao === 'pagar')  marcarComoPaga(id);
-      if (acao === 'excluir') excluirOperacao(id);
+      const idOperacao = btn.getAttribute('data-id') || btn.getAttribute('data-id-op');
+      if (acao === 'excluir') {
+        excluirOperacao(idOperacao);
+      } else if (acao === 'pagar') {
+        marcarComoPaga(idOperacao);
+      } else if (acao === 'pagar-parcela') {
+        const idParcela = btn.getAttribute('data-id-parc');
+        pagarParcela(idOperacao, idParcela);
+      }
     });
   });
+
+  // Anexa a função pro botão HTML string
+  window.gerarRetroativoEAtualizar = async (idOp) => {
+    const operacao = estado.operacoes.find(o => o.id === idOp);
+    if (operacao && !operacao.listaParcelas) {
+      operacao.listaParcelas = gerarListaParcelas(operacao.dataConcessao, operacao.parcelas || operacao.meses || 1, operacao.valorParcela || operacao.valorReceber);
+      await FirestoreService.atualizar('hmcred_operacoes', idOp, { listaParcelas: operacao.listaParcelas });
+      mostrarToast({tipo: 'success', titulo: 'Parcelas geradas', mensagem: 'Atualizado com sucesso.'});
+    }
+  };
 
   // Fechar modais ao clicar fora
   container.querySelectorAll('.modal-overlay').forEach(overlay => {
