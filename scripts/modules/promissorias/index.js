@@ -24,19 +24,54 @@ let estado = {
   promissorias: [],
   clientes: [],
   contasDinheiro: [],
+  pix: [],
   filtroStatus: 'ativas',
   carregando: true
 };
 
+/** Promissória cujo WhatsApp foi aberto — usado pelo modal de cobrança */
+let promissoriaPendWa = null;
+
 let unsubscribePromissorias = null;
 let unsubscribeClientes = null;
 let unsubscribeDinheiro = null;
+let unsubscribePix = null;
 
 /* ─────────────────────────────────────────────────────────────────────────────
    REGRAS DE NEGÓCIO E SINCRONIZAÇÃO
 ───────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Obtém o próximo vencimento de juros para promissórias de modalidade juros_mensais.
+ * Usa proxVencimentoJuros direto, ou calcula a partir do último pagamento + 30 dias,
+ * ou cai para dataVencimento como referência.
+ */
+function obterProxVencJuros(p) {
+  if (p.proxVencimentoJuros) return p.proxVencimentoJuros;
+  if (p.pagosJuros && p.pagosJuros.length > 0) {
+    const ultimo = p.pagosJuros[p.pagosJuros.length - 1];
+    const data = new Date(ultimo.dataPagamento);
+    data.setDate(data.getDate() + 30);
+    return data.toISOString().split('T')[0];
+  }
+  return p.dataVencimento || null;
+}
+
 function obterStatusReal(promissoria) {
+  if (promissoria.status === 'recebida') return 'recebida';
+
+  if (promissoria.modalidade === 'juros_mensais') {
+    // Para juros_mensais: verificar o próximo vencimento dos JUROS, não da promissória em si
+    const proxVenc = obterProxVencJuros(promissoria);
+    if (!proxVenc) return 'pendente';
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const partes = proxVenc.split('-');
+    const vencimento = new Date(partes[0], partes[1] - 1, partes[2]);
+    if (vencimento < hoje)  return 'juros_vencido';
+    if (vencimento.getTime() === hoje.getTime()) return 'juros_vence_hoje';
+    return 'pendente';
+  }
+
   const statusVencimento = calcularStatusVencimento(promissoria.dataVencimento, promissoria.status);
   if (statusVencimento === 'hoje' || statusVencimento === 'amanha') return 'pendente';
   return statusVencimento;
@@ -181,6 +216,8 @@ async function criarPromissoria(evento) {
     pagosJuros: [],          // Registros de juros mensais pagos (juros_mensais)
     lucroAcumulado: 0,       // Lucro realizado ao longo do tempo
     dataVencimento: formData.get('dataVencimento'),
+    // Para juros_mensais: a data informada no form é o 1º vencimento dos juros
+    proxVencimentoJuros: modalidade === 'juros_mensais' ? formData.get('dataVencimento') : null,
     origem,
     origemReferenciaId: origem === 'dinheiro' ? origemReferenciaId : null,
     status: 'pendente'
@@ -206,6 +243,8 @@ async function criarPromissoria(evento) {
     await FirestoreService.atualizar('hmcred', 'configuracao', {
       capitalDisponivel: hmcredConfig.capitalDisponivel - capital
     });
+    // Sincroniza patrimônio: capital saiu do HMCRED → patrimônio.hmcred deve cair
+    await sincronizarHmcredExterno();
   } else if (origem === 'dinheiro') {
     const conta = estado.contasDinheiro.find(c => c.id === origemReferenciaId);
     if (!conta || capital > conta.saldo) {
@@ -357,7 +396,7 @@ async function registrarParcelaAmortizacao(id, clienteId) {
 
 /**
  * Registra o recebimento de juros mensais (modalidade juros_mensais).
- * O capital permanece intacto.
+ * O capital permanece intacto. NÃO atualiza o campo 'lucro' para não inflar totais.
  */
 async function registrarJurosMensais(id, clienteId) {
   const p = estado.promissorias.find(x => x.id === id);
@@ -366,11 +405,18 @@ async function registrarJurosMensais(id, clienteId) {
   const jurosMes = p.jurosMensal;
   const dataHoje  = new Date().toLocaleDateString('pt-BR');
 
+  // Calcula próximo vencimento: hoje + 30 dias
+  const proxVenc = new Date();
+  proxVenc.setDate(proxVenc.getDate() + 30);
+  const proxVencStr = proxVenc.toISOString().split('T')[0];
+  const proxVencFormatado = proxVenc.toLocaleDateString('pt-BR');
+
   const confirmado = confirm(
     `Registrar recebimento de juros mensais de ${formatarMoeda(jurosMes)}?\n\n` +
     `Capital: ${formatarMoeda(p.valorInvestido)} (permanece intacto)\n` +
     `Taxa: ${p.taxaMensal}%/mês\n` +
-    `Data: ${dataHoje}`
+    `Data: ${dataHoje}\n` +
+    `Próximo vencimento de juros: ${proxVencFormatado}`
   );
   if (!confirmado) return;
 
@@ -380,16 +426,18 @@ async function registrarJurosMensais(id, clienteId) {
   }];
   const lucroAcumulado = (p.lucroAcumulado || 0) + jurosMes;
 
+  // IMPORTANTE: NÃO atualiza 'lucro' para não inflar totais de dívida
   const res = await FirestoreService.atualizar('promissorias', id, {
     pagosJuros,
     lucroAcumulado,
-    lucro: lucroAcumulado
+    proxVencimentoJuros: proxVencStr
   });
 
   if (res.sucesso) {
     p.pagosJuros = pagosJuros;
     p.lucroAcumulado = lucroAcumulado;
-    p.lucro = lucroAcumulado;
+    p.proxVencimentoJuros = proxVencStr;
+    // NÃO atualiza p.lucro — mantém 0 para não inflar totais
 
     // Apenas registra o recebimento dos juros no histórico (não amortiza capital)
     await FirestoreService.criar('lancamentos_hist', {
@@ -403,7 +451,7 @@ async function registrarJurosMensais(id, clienteId) {
     mostrarToast({
       tipo: 'success',
       titulo: 'Juros registrados!',
-      mensagem: `${formatarMoeda(jurosMes)} recebidos. Lucro acumulado: ${formatarMoeda(lucroAcumulado)}.`
+      mensagem: `${formatarMoeda(jurosMes)} recebidos. Próx. vencimento: ${proxVencFormatado}.`
     });
   } else {
     mostrarToast({ tipo: 'danger', titulo: 'Erro ao registrar', mensagem: 'Não foi possível atualizar o banco.' });
@@ -485,6 +533,8 @@ async function devolverCapitalAOrigem(promissoria, valor) {
       await FirestoreService.atualizar('hmcred', 'configuracao', {
         capitalDisponivel: resConfig.dados.capitalDisponivel + valor
       });
+      // Sincroniza patrimônio: capital voltou ao HMCRED → patrimônio.hmcred deve subir
+      await sincronizarHmcredExterno();
     }
   } else if (promissoria.origem === 'dinheiro' && promissoria.origemReferenciaId) {
     const conta = estado.contasDinheiro.find(c => c.id === promissoria.origemReferenciaId);
@@ -509,12 +559,35 @@ async function sincronizarDinheiroExterno() {
   }
 }
 
+/**
+ * Sincroniza patrimonio.hmcred com o capitalDisponivel atual do HMCRED.
+ * Deve ser chamada sempre que o capitalDisponivel mudar (criação ou recebimento de promissória).
+ * Equivalente ao sincronizarDinheiroExterno() para o módulo Dinheiro.
+ */
+async function sincronizarHmcredExterno() {
+  const resConfig = await FirestoreService.obter('hmcred', 'configuracao');
+  if (resConfig.sucesso) {
+    const resumoExistente = await FirestoreService.obter('patrimonio', 'resumo');
+    const dadosPatrimonio = resumoExistente.sucesso ? resumoExistente.dados : {};
+    // Patrimônio HMCRED = capital disponível em caixa (não o limite total)
+    dadosPatrimonio.hmcred = resConfig.dados.capitalDisponivel || 0;
+    await FirestoreService.salvar('patrimonio', 'resumo', dadosPatrimonio);
+  }
+}
+
+/**
+ * NOTA: atualizarResumoPatrimonio foi desativado.
+ * O campo patrimonio.promissorias era somado ao total do patrimônio causando
+ * dupla contagem: o dinheiro já saiu do HMCRED/Dinheiro ao criar a promissória.
+ * O campo ainda é gravado para uso informativo ("Capital em Campo") na tela de Patrimônio.
+ */
 async function atualizarResumoPatrimonio() {
   const resumoExistente = await FirestoreService.obter('patrimonio', 'resumo');
   const dadosPatrimonio = resumoExistente.sucesso ? resumoExistente.dados : {};
   const totalInvestidoAtivo = estado.promissorias
     .filter(p => p.status !== 'recebida')
     .reduce((acc, p) => acc + (p.capitalRestante || p.valorInvestido || 0), 0);
+  // Grava apenas o campo informativo — NÃO reflete no cálculo do patrimônio total
   dadosPatrimonio.promissorias = totalInvestidoAtivo;
   await FirestoreService.salvar('patrimonio', 'resumo', dadosPatrimonio);
 }
@@ -571,6 +644,42 @@ function renderizarInfoModalidade(p) {
   if (p.modalidade === 'amortizacao') {
     const parcelaAt = p.parcelaAtual || 1;
     const parcAtual = p.cronograma?.[parcelaAt - 1];
+    const parcelasPagas = p.pagosParcelas?.length || 0;
+
+    // Gera as linhas do cronograma completo
+    const linhasCronograma = (p.cronograma || []).map((parc, idx) => {
+      const paga = idx < parcelasPagas;
+      const atual = idx === parcelaAt - 1;
+      const corLinha = paga
+        ? 'color: var(--color-success); opacity: 0.6;'
+        : atual
+          ? 'color: var(--color-info); font-weight: 600;'
+          : 'color: var(--text-secondary);';
+      const iconePagas = paga
+        ? '<span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; color:var(--color-success);">check_circle</span> '
+        : atual
+          ? '<span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; color:var(--color-info);">arrow_right</span> '
+          : '';
+      // Calcula a data estimada da parcela a partir do vencimento raiz
+      let dataEstimada = '';
+      if (p.dataVencimento) {
+        const partes = p.dataVencimento.split('-');
+        const dataBase = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+        // A parcela 1 = dataVencimento, parcelas seguintes = +1 mês cada
+        dataBase.setMonth(dataBase.getMonth() - (p.meses - 1) + idx);
+        dataEstimada = dataBase.toLocaleDateString('pt-BR', { month: '2-digit', year: '2-digit' });
+      }
+      return `
+        <tr style="border-top: 1px solid var(--border-default); ${paga ? 'text-decoration: line-through; opacity: 0.55;' : ''}">
+          <td style="padding: 4px 6px; ${corLinha}">${iconePagas}${parc.mes}</td>
+          <td style="padding: 4px 6px; text-align:right; color: var(--text-muted);">${dataEstimada}</td>
+          <td style="padding: 4px 6px; text-align:right; color: var(--text-secondary);">${formatarMoeda(parc.amortizacao)}</td>
+          <td style="padding: 4px 6px; text-align:right; color: var(--color-success);">${formatarMoeda(parc.juros)}</td>
+          <td style="padding: 4px 6px; text-align:right; ${atual ? 'color:var(--color-info);' : corLinha}">${formatarMoeda(parc.parcela)}</td>
+        </tr>
+      `;
+    }).join('');
+
     return `
       <div style="margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-default);">
         <div style="display: flex; gap: var(--space-6); flex-wrap: wrap; margin-bottom: var(--space-2);">
@@ -588,35 +697,123 @@ function renderizarInfoModalidade(p) {
           </div>
         </div>
         <div style="background: var(--bg-overlay); border-radius: var(--radius-sm); height: 6px; overflow: hidden;">
-          <div style="height: 100%; background: var(--color-info); width: ${Math.round(((p.pagosParcelas?.length || 0) / p.meses) * 100)}%; border-radius: var(--radius-sm); transition: width 0.3s;"></div>
+          <div style="height: 100%; background: var(--color-info); width: ${Math.round((parcelasPagas / p.meses) * 100)}%; border-radius: var(--radius-sm); transition: width 0.3s;"></div>
         </div>
-        <p style="margin: 4px 0 0; font-size: 11px; color: var(--text-muted);">${p.pagosParcelas?.length || 0} de ${p.meses} parcelas pagas</p>
+        <p style="margin: 4px 0 6px; font-size: 11px; color: var(--text-muted);">${parcelasPagas} de ${p.meses} parcelas pagas</p>
+
+        ${p.cronograma && p.cronograma.length > 0 ? `
+        <details style="margin-top: var(--space-2);">
+          <summary style="cursor: pointer; font-size: var(--text-xs); color: var(--color-info); font-weight: var(--font-medium); list-style: none; display: flex; align-items: center; gap: 4px; user-select: none;">
+            <span class="material-symbols-outlined" style="font-size: 14px;">expand_more</span>
+            Ver cronograma completo (${p.meses} parcelas)
+          </summary>
+          <div style="margin-top: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden; font-size: 11px;">
+            <table style="width:100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--bg-hover);">
+                  <th style="padding: 5px 6px; text-align:left; color: var(--text-muted);">Parc.</th>
+                  <th style="padding: 5px 6px; text-align:right; color: var(--text-muted);">Ref.</th>
+                  <th style="padding: 5px 6px; text-align:right; color: var(--text-muted);">Amortiz.</th>
+                  <th style="padding: 5px 6px; text-align:right; color: var(--color-success);">Juros</th>
+                  <th style="padding: 5px 6px; text-align:right; color: var(--color-info);">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${linhasCronograma}
+              </tbody>
+            </table>
+          </div>
+        </details>
+        ` : ''}
       </div>
     `;
   }
 
   if (p.modalidade === 'juros_mensais') {
-    const pagosCount = p.pagosJuros?.length || 0;
+    const pagosCount  = p.pagosJuros?.length || 0;
+    const proxVenc    = obterProxVencJuros(p);
+    const statusJuros = obterStatusReal(p);
+    const jurosVencido    = statusJuros === 'juros_vencido';
+    const jurosVenceHoje  = statusJuros === 'juros_vence_hoje';
+    const corProxVenc = jurosVencido ? 'var(--color-danger)' : jurosVenceHoje ? 'var(--color-warning)' : 'var(--color-success)';
+    const iconProxVenc = jurosVencido ? 'error' : jurosVenceHoje ? 'warning' : 'event_available';
+    const proxVencLabel = jurosVencido
+      ? `⚠ VENCIDO — ${proxVenc ? formatarData(proxVenc) : '—'}`
+      : jurosVenceHoje
+        ? `Vence hoje — ${proxVenc ? formatarData(proxVenc) : '—'}`
+        : proxVenc ? formatarData(proxVenc) : 'Não definido';
+
+    // Histórico de pagamentos passados
+    const historicoRows = (p.pagosJuros || []).map((pg, idx) => {
+      const dataPg = pg.dataPagamento
+        ? formatarData(pg.dataPagamento.split('T')[0])
+        : '—';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;
+                    padding:var(--space-2) var(--space-3);background:var(--bg-surface);
+                    border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">
+          <div style="display:flex;align-items:center;gap:var(--space-2);">
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--color-success);">check_circle</span>
+            <span style="font-size:var(--text-xs);color:var(--text-secondary);">Mês ${idx + 1}</span>
+            <span style="font-size:var(--text-xs);color:var(--text-muted);">— ${dataPg}</span>
+          </div>
+          <span class="value-sensitive" style="font-size:var(--text-sm);font-weight:var(--font-semibold);color:var(--color-success);">${formatarMoeda(pg.valor)}</span>
+        </div>`;
+    }).join('');
+
+    // Próxima parcela esperada
+    const proximaRow = `
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:var(--space-2) var(--space-3);
+                  background:${jurosVencido ? 'var(--color-danger-muted)' : 'var(--bg-overlay)'};
+                  border-radius:var(--radius-sm);
+                  border:1px solid ${jurosVencido ? 'var(--color-danger)' : jurosVenceHoje ? 'var(--color-warning)' : 'var(--border-default)'};">
+        <div style="display:flex;align-items:center;gap:var(--space-2);">
+          <span class="material-symbols-outlined" style="font-size:14px;color:${corProxVenc};">${iconProxVenc}</span>
+          <span style="font-size:var(--text-xs);font-weight:var(--font-medium);color:${corProxVenc};">
+            Mês ${pagosCount + 1} — ${jurosVencido ? 'JUROS VENCIDO' : jurosVenceHoje ? 'VENCE HOJE' : (proxVenc ? formatarData(proxVenc) : 'Não definido')}
+          </span>
+        </div>
+        <span class="value-sensitive" style="font-size:var(--text-sm);font-weight:var(--font-semibold);color:${corProxVenc};">${formatarMoeda(p.jurosMensal)}</span>
+      </div>`;
+
     return `
-      <div style="margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-default);">
-        <div style="display: flex; gap: var(--space-6); flex-wrap: wrap;">
+      <div style="margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--border-default);">
+        <div style="display:flex;gap:var(--space-5);flex-wrap:wrap;margin-bottom:var(--space-3);">
           <div>
-            <p style="margin:0; font-size: var(--text-xs); color: var(--text-muted);">Capital (fixo)</p>
-            <p class="value-sensitive" style="margin:0; font-weight: var(--font-bold);">${formatarMoeda(p.valorInvestido)}</p>
+            <p style="margin:0;font-size:var(--text-xs);color:var(--text-muted);">Capital (fixo)</p>
+            <p class="value-sensitive" style="margin:0;font-weight:var(--font-bold);">${formatarMoeda(p.valorInvestido)}</p>
           </div>
           <div>
-            <p style="margin:0; font-size: var(--text-xs); color: var(--text-muted);">Juros/mês (${p.taxaMensal}%)</p>
-            <p class="value-sensitive" style="margin:0; font-weight: var(--font-bold); color: var(--color-success);">${formatarMoeda(p.jurosMensal)}/mês</p>
+            <p style="margin:0;font-size:var(--text-xs);color:var(--text-muted);">Juros/mês (${p.taxaMensal}%)</p>
+            <p class="value-sensitive" style="margin:0;font-weight:var(--font-bold);color:var(--color-success);">${formatarMoeda(p.jurosMensal)}/mês</p>
           </div>
           <div>
-            <p style="margin:0; font-size: var(--text-xs); color: var(--text-muted);">Total recebido em juros</p>
-            <p class="value-sensitive" style="margin:0; font-weight: var(--font-bold); color: var(--color-gold);">${formatarMoeda(p.lucroAcumulado || 0)}</p>
+            <p style="margin:0;font-size:var(--text-xs);color:var(--text-muted);">Total recebido em juros</p>
+            <p class="value-sensitive" style="margin:0;font-weight:var(--font-bold);color:var(--color-gold);">${formatarMoeda(p.lucroAcumulado || 0)}</p>
           </div>
           <div>
-            <p style="margin:0; font-size: var(--text-xs); color: var(--text-muted);">Meses de juros pagos</p>
-            <p style="margin:0; font-weight: var(--font-semibold);">${pagosCount} ${pagosCount === 1 ? 'mês' : 'meses'}</p>
+            <p style="margin:0;font-size:var(--text-xs);color:var(--text-muted);">Próx. Vencimento Juros</p>
+            <p style="margin:0;font-weight:var(--font-semibold);color:${corProxVenc};font-size:var(--text-sm);">
+              <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle;">${iconProxVenc}</span>
+              ${proxVencLabel}
+            </p>
           </div>
         </div>
+
+        <details style="margin-top:var(--space-1);">
+          <summary style="cursor:pointer;font-size:var(--text-xs);color:var(--color-info);
+                          font-weight:var(--font-medium);list-style:none;
+                          display:flex;align-items:center;gap:4px;user-select:none;
+                          padding:var(--space-1) 0;">
+            <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
+            Histórico de Juros Mensais (${pagosCount} ${pagosCount === 1 ? 'pagamento' : 'pagamentos'})
+          </summary>
+          <div style="margin-top:var(--space-2);display:grid;gap:var(--space-1);">
+            ${historicoRows}
+            ${proximaRow}
+          </div>
+        </details>
       </div>
     `;
   }
@@ -624,11 +821,136 @@ function renderizarInfoModalidade(p) {
   return '';
 }
 
+function obterValorCobrancaWa(p) {
+  const mod = p.modalidade || 'unico';
+  if (mod === 'juros_mensais') return p.jurosMensal || 0;
+  if (mod === 'amortizacao') {
+    const idx = (p.parcelaAtual || 1) - 1;
+    return p.cronograma?.[idx]?.parcela || 0;
+  }
+  return (p.valorInvestido || 0) + (p.lucro || 0);
+}
+
+function obterDescricaoCobrancaWa(p) {
+  const mod = p.modalidade || 'unico';
+  if (mod === 'juros_mensais') return `Juros mensais (${p.taxaMensal}%/mês) — ${p.descricao || 'Promissória'}`;
+  if (mod === 'amortizacao') return `Parcela ${p.parcelaAtual || 1}/${p.meses} — ${p.descricao || 'Promissória'}`;
+  return p.descricao || 'Promissória — Pagamento Único';
+}
+
+function abrirModalWaPromissoria(id) {
+  const p = estado.promissorias.find(x => x.id === id);
+  if (!p) return;
+
+  const cliente = estado.clientes.find(c => c.id === p.clienteId);
+  if (!cliente || !cliente.telefone) {
+    mostrarToast({ tipo: 'warning', titulo: 'Telefone não encontrado', mensagem: 'O cliente não possui telefone cadastrado.' });
+    return;
+  }
+
+  promissoriaPendWa = p;
+
+  const valor = obterValorCobrancaWa(p);
+  const descricao = obterDescricaoCobrancaWa(p);
+
+  const elCliente = document.getElementById('modal-wa-prom-cliente');
+  const elValor   = document.getElementById('modal-wa-prom-valor');
+  const elDesc    = document.getElementById('modal-wa-prom-desc');
+  const elPix     = document.getElementById('wa-prom-pix-select');
+  const elPreview = document.getElementById('wa-prom-preview');
+
+  if (elCliente) elCliente.textContent = cliente.nome;
+  if (elValor)   elValor.textContent   = formatarMoeda(valor);
+  if (elDesc)    elDesc.textContent    = descricao;
+
+  if (elPix) {
+    let htmlPix = `<option value="">Não enviar PIX</option>`;
+    estado.pix.forEach(px => {
+      htmlPix += `<option value="${px.chave}">${px.apelido} — ${px.chave}</option>`;
+    });
+    elPix.innerHTML = htmlPix;
+  }
+
+  // Atualiza preview da mensagem ao abrir
+  atualizarPreviewWaProm();
+
+  abrirModal('modal-wa-promissoria');
+}
+
+function atualizarPreviewWaProm() {
+  const p = promissoriaPendWa;
+  if (!p) return;
+
+  const cliente = estado.clientes.find(c => c.id === p.clienteId);
+  if (!cliente) return;
+
+  const valor = obterValorCobrancaWa(p);
+  const descricao = obterDescricaoCobrancaWa(p);
+  const vencimento = formatarData(p.dataVencimento);
+  const tom = document.querySelector('input[name="wa-prom-tom"]:checked')?.value || 'amigavel';
+  const pixEscolhido = document.getElementById('wa-prom-pix-select')?.value || '';
+
+  let texto = '';
+  if (tom === 'amigavel') {
+    texto = `Olá ${cliente.nome}, tudo bem? 😊 Passando para lembrar do pagamento de *${formatarMoeda(valor)}* referente a "${descricao}" com vencimento em *${vencimento}*. Conto com você! 🙏`;
+  } else {
+    texto = `Prezado(a) *${cliente.nome}*, informamos que o valor de *${formatarMoeda(valor)}* referente a "${descricao}" está *pendente* com vencimento em *${vencimento}*. Solicitamos a regularização imediata para evitar medidas adicionais de cobrança. ⚠️`;
+  }
+  if (pixEscolhido) {
+    texto += `\n\n💳 Chave PIX para pagamento: *${pixEscolhido}*`;
+  }
+
+  const elPreview = document.getElementById('wa-prom-preview');
+  if (elPreview) elPreview.textContent = texto;
+}
+
+function dispararWaPromissoria(evento) {
+  evento.preventDefault();
+  const p = promissoriaPendWa;
+  if (!p) return;
+
+  const cliente = estado.clientes.find(c => c.id === p.clienteId);
+  if (!cliente || !cliente.telefone) return;
+
+  const form = evento.target;
+  const formData = new FormData(form);
+  const pixEscolhido = formData.get('wa-prom-pix') || '';
+  const tom = formData.get('wa-prom-tom') || 'amigavel';
+
+  const valor = obterValorCobrancaWa(p);
+  const descricao = obterDescricaoCobrancaWa(p);
+  const vencimento = formatarData(p.dataVencimento);
+
+  let texto = '';
+  if (tom === 'amigavel') {
+    texto = `Olá ${cliente.nome}, tudo bem? 😊 Passando para lembrar do pagamento de *${formatarMoeda(valor)}* referente a "${descricao}" com vencimento em *${vencimento}*. Conto com você! 🙏`;
+  } else {
+    texto = `Prezado(a) *${cliente.nome}*, informamos que o valor de *${formatarMoeda(valor)}* referente a "${descricao}" está *pendente* com vencimento em *${vencimento}*. Solicitamos a regularização imediata para evitar medidas adicionais de cobrança. ⚠️`;
+  }
+  if (pixEscolhido) {
+    texto += `\n\n💳 Chave PIX para pagamento: *${pixEscolhido}*`;
+  }
+
+  const telefoneNum = cliente.telefone.replace(/\D/g, '');
+  const url = `https://wa.me/55${telefoneNum}?text=${encodeURIComponent(texto)}`;
+  window.open(url, '_blank');
+
+  fecharModal('modal-wa-promissoria');
+}
+
 function renderizarBotoesAcao(p) {
   if (p.status === 'recebida') return '';
 
-  const statusReal = obterStatusReal(p);
   const mod = p.modalidade || 'unico';
+
+  // Botão Cobrar via WhatsApp (comum a todas as modalidades ativas)
+  const btnCobrar = `
+    <button class="btn btn-sm" style="background: #25d36620; color: #25d366; border: 1px solid #25d36640;"
+            data-acao="cobrar-wa" data-id="${p.id}" data-cliente="${p.clienteId}">
+      <span class="material-symbols-outlined icon-sm">chat</span>
+      Cobrar
+    </button>
+  `;
 
   let btns = '';
 
@@ -665,24 +987,34 @@ function renderizarBotoesAcao(p) {
     `;
   }
 
-  return btns;
+  return btns + btnCobrar;
 }
 
 function renderizarCardPromissoria(p) {
   const statusReal = obterStatusReal(p);
 
-  let statusCor, statusBg, statusIcon;
+  let statusCor, statusBg, statusIcon, statusBadgeExtra = '';
   if (statusReal === 'recebida') {
-    statusCor = 'var(--color-success)';
-    statusBg  = 'var(--color-success-muted)';
+    statusCor  = 'var(--color-success)';
+    statusBg   = 'var(--color-success-muted)';
     statusIcon = 'check_circle';
   } else if (statusReal === 'atrasada') {
-    statusCor = 'var(--color-danger)';
-    statusBg  = 'var(--color-danger-muted)';
+    statusCor  = 'var(--color-danger)';
+    statusBg   = 'var(--color-danger-muted)';
     statusIcon = 'error';
+  } else if (statusReal === 'juros_vencido') {
+    statusCor  = 'var(--color-warning)';
+    statusBg   = 'var(--color-warning-muted)';
+    statusIcon = 'calendar_month';
+    statusBadgeExtra = `<span class="badge" style="font-size:10px;background:var(--color-warning-muted);color:var(--color-warning);">⚠ Juros Vencido</span>`;
+  } else if (statusReal === 'juros_vence_hoje') {
+    statusCor  = 'var(--color-warning)';
+    statusBg   = 'var(--color-warning-muted)';
+    statusIcon = 'today';
+    statusBadgeExtra = `<span class="badge" style="font-size:10px;background:var(--color-warning-muted);color:var(--color-warning);">Juros Vence Hoje</span>`;
   } else {
-    statusCor = 'var(--color-gold)';
-    statusBg  = 'var(--bg-overlay)';
+    statusCor  = 'var(--color-gold)';
+    statusBg   = 'var(--bg-overlay)';
     statusIcon = 'schedule';
   }
 
@@ -708,7 +1040,11 @@ function renderizarCardPromissoria(p) {
               <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
                 <span class="badge badge-neutral" style="font-size: 10px;">Origem: ${labelOrigem}</span>
                 <span class="badge" style="font-size: 10px; background: var(--bg-overlay); color: var(--color-info);">${modLabel}</span>
-                <span style="font-size: var(--text-xs); color: var(--text-muted);">Venc: ${formatarData(p.dataVencimento)}</span>
+                ${statusBadgeExtra}
+                ${p.modalidade === 'juros_mensais'
+                  ? `<span style="font-size:var(--text-xs);color:${statusReal === 'juros_vencido' ? 'var(--color-danger)' : 'var(--text-muted)'};">Próx. Juros: ${formatarData(obterProxVencJuros(p))}</span>`
+                  : `<span style="font-size: var(--text-xs); color: var(--text-muted);">Venc: ${formatarData(p.dataVencimento)}</span>`
+                }
               </div>
             </div>
           </div>
@@ -873,8 +1209,9 @@ function renderizarModais() {
             <!-- Vencimento e Origem -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
               <div class="form-group">
-                <label class="form-label" for="nova-prom-vencimento">Vencimento / Prazo <span class="required">*</span></label>
+                <label class="form-label" id="label-nova-prom-vencimento" for="nova-prom-vencimento">Vencimento / Prazo <span class="required">*</span></label>
                 <input type="date" id="nova-prom-vencimento" name="dataVencimento" class="form-input" required ${estado.clientes.length === 0 ? 'disabled' : ''}>
+                <small id="helper-nova-prom-vencimento" class="text-muted" style="display:block;margin-top:4px;"></small>
               </div>
               <div class="form-group">
                 <label class="form-label" for="nova-prom-origem">Origem do Recurso <span class="required">*</span></label>
@@ -899,6 +1236,89 @@ function renderizarModais() {
             <button type="submit" class="btn btn-primary" ${estado.clientes.length === 0 ? 'disabled' : ''}>
               <span class="material-symbols-outlined">receipt_long</span>
               Gerar Promissória
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Cobrar via WhatsApp (Promissórias) -->
+    <div class="modal-overlay" id="modal-wa-promissoria">
+      <div class="modal" style="max-width: 480px; width: 100%;">
+        <div class="modal-header">
+          <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+            <span class="material-symbols-outlined" style="color:#25d366;">chat</span>
+            Cobrar via WhatsApp
+          </h3>
+          <button type="button" class="btn btn-ghost btn-icon" onclick="document.getElementById('modal-wa-promissoria').classList.remove('open')">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <form id="form-wa-promissoria">
+          <div class="modal-body">
+
+            <!-- Resumo da cobrança -->
+            <div style="background: var(--bg-overlay); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border-default); margin-bottom: var(--space-4);">
+              <p style="margin:0; font-size: var(--text-xs); color: var(--text-muted);">Cliente</p>
+              <p style="margin:0 0 8px; font-size: var(--text-base); font-weight: var(--font-semibold);" id="modal-wa-prom-cliente">—</p>
+              <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3);">
+                <div>
+                  <p style="margin:0; font-size: var(--text-xs); color: var(--text-muted);">Referente a</p>
+                  <p style="margin:0; font-size: var(--text-sm);" id="modal-wa-prom-desc">—</p>
+                </div>
+                <div style="text-align:right;">
+                  <p style="margin:0; font-size: var(--text-xs); color: var(--text-muted);">Valor a cobrar</p>
+                  <p style="margin:0; font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-success);" id="modal-wa-prom-valor">—</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Seleção de PIX -->
+            <div class="form-group">
+              <label class="form-label" for="wa-prom-pix-select">Chave PIX para envio <small class="text-muted">(opcional)</small></label>
+              <select id="wa-prom-pix-select" name="wa-prom-pix" class="form-input form-select">
+                <option value="">Não enviar PIX</option>
+              </select>
+            </div>
+
+            <!-- Tom da mensagem -->
+            <div class="form-group">
+              <label class="form-label">Tom da mensagem</label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3);">
+                <label style="cursor:pointer;">
+                  <input type="radio" name="wa-prom-tom" value="amigavel" checked style="display:none;" class="wa-prom-tom-radio">
+                  <div class="wa-tom-btn" data-tom="amigavel" style="border: 2px solid var(--color-success); border-radius: var(--radius-md); padding: var(--space-3); text-align:center; background: var(--color-success-muted); transition: all 0.2s;">
+                    <span class="material-symbols-outlined" style="font-size:24px; color:var(--color-success); display:block;">sentiment_satisfied</span>
+                    <p style="margin:4px 0 0; font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-success);">Amigável</p>
+                    <p style="margin:2px 0 0; font-size: 10px; color: var(--text-muted);">Tom cordial e respeitoso</p>
+                  </div>
+                </label>
+                <label style="cursor:pointer;">
+                  <input type="radio" name="wa-prom-tom" value="firme" style="display:none;" class="wa-prom-tom-radio">
+                  <div class="wa-tom-btn" data-tom="firme" style="border: 2px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3); text-align:center; background: var(--bg-overlay); transition: all 0.2s;">
+                    <span class="material-symbols-outlined" style="font-size:24px; color:var(--color-warning); display:block;">gavel</span>
+                    <p style="margin:4px 0 0; font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-warning);">Firme</p>
+                    <p style="margin:2px 0 0; font-size: 10px; color: var(--text-muted);">Tom formal e assertivo</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Preview da mensagem -->
+            <div style="background: var(--bg-overlay); border-radius: var(--radius-md); padding: var(--space-3); border: 1px solid var(--border-default);">
+              <p style="margin:0 0 6px; font-size: var(--text-xs); color: var(--text-muted); display:flex; align-items:center; gap:4px;">
+                <span class="material-symbols-outlined" style="font-size:14px;">preview</span>
+                Prévia da mensagem
+              </p>
+              <p id="wa-prom-preview" style="margin:0; font-size: var(--text-sm); color: var(--text-secondary); white-space: pre-wrap; line-height: 1.5;">—</p>
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-wa-promissoria').classList.remove('open')">Cancelar</button>
+            <button type="submit" class="btn" style="background:#25d366; color:#fff; display:flex; align-items:center; gap:8px;">
+              <span class="material-symbols-outlined icon-sm">send</span>
+              Enviar no WhatsApp
             </button>
           </div>
         </form>
@@ -1061,6 +1481,19 @@ function registrarEventosTela(container) {
       if (grupoLucroManual) grupoLucroManual.style.display = 'none';
     }
 
+    // Atualiza label e helper do campo de data conforme modalidade
+    const labelDataEl = document.getElementById('label-nova-prom-vencimento');
+    const helperDataEl = document.getElementById('helper-nova-prom-vencimento');
+    if (labelDataEl) {
+      if (mod === 'juros_mensais') {
+        labelDataEl.innerHTML = 'Primeiro Vencimento de Juros <span class="required">*</span>';
+        if (helperDataEl) helperDataEl.textContent = 'Data do primeiro recebimento de juros. Os próximos são calculados automaticamente (+30 dias a cada registro).';
+      } else {
+        labelDataEl.innerHTML = 'Vencimento / Prazo <span class="required">*</span>';
+        if (helperDataEl) helperDataEl.textContent = '';
+      }
+    }
+
     // Recalcular preview
     recalcularPreview();
   };
@@ -1175,26 +1608,64 @@ function registrarEventosTela(container) {
   });
 
   // Delegação de eventos para ações nos cards
-  container.addEventListener('click', (e) => {
-    let alvo = e.target;
-    while (alvo && alvo !== container) {
-      if (alvo.getAttribute && alvo.getAttribute('data-acao')) break;
-      alvo = alvo.parentNode;
-    }
+  if (!container.dataset.eventosRegistradosPromissorias) {
+    container.addEventListener('click', (e) => {
+      let alvo = e.target;
+      while (alvo && alvo !== container) {
+        if (alvo.getAttribute && alvo.getAttribute('data-acao')) break;
+        alvo = alvo.parentNode;
+      }
 
-    if (alvo && alvo.getAttribute) {
-      const acao      = alvo.getAttribute('data-acao');
-      const id        = alvo.getAttribute('data-id');
-      const clienteId = alvo.getAttribute('data-cliente');
+      if (alvo && alvo.getAttribute) {
+        const acao      = alvo.getAttribute('data-acao');
+        const id        = alvo.getAttribute('data-id');
+        const clienteId = alvo.getAttribute('data-cliente');
 
-      if (acao === 'receber-unico')     receberPagamentoUnico(id, clienteId);
-      else if (acao === 'registrar-parcela') registrarParcelaAmortizacao(id, clienteId);
-      else if (acao === 'registrar-juros')   registrarJurosMensais(id, clienteId);
-      else if (acao === 'quitar-capital')    quitarCapitalJurosMensais(id, clienteId);
-      else if (acao === 'excluir')           excluirPromissoria(id, clienteId);
+        if (acao === 'receber-unico')         receberPagamentoUnico(id, clienteId);
+        else if (acao === 'registrar-parcela') registrarParcelaAmortizacao(id, clienteId);
+        else if (acao === 'registrar-juros')   registrarJurosMensais(id, clienteId);
+        else if (acao === 'quitar-capital')    quitarCapitalJurosMensais(id, clienteId);
+        else if (acao === 'cobrar-wa')         abrirModalWaPromissoria(id);
+        else if (acao === 'excluir')           excluirPromissoria(id, clienteId);
 
-      e.stopPropagation();
-    }
+        e.stopPropagation();
+      }
+    });
+    container.dataset.eventosRegistradosPromissorias = 'true';
+  }
+
+  // --- Modal WhatsApp Promissória ---
+  const formWaProm = document.getElementById('form-wa-promissoria');
+  if (formWaProm) formWaProm.addEventListener('submit', dispararWaPromissoria);
+
+  // Atualiza preview ao mudar PIX ou tom
+  const pixSelProm = document.getElementById('wa-prom-pix-select');
+  if (pixSelProm) pixSelProm.addEventListener('change', atualizarPreviewWaProm);
+
+  // Seleção visual de tom (radio com card)
+  document.querySelectorAll('.wa-prom-tom-radio').forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.querySelectorAll('.wa-tom-btn').forEach(btn => {
+        const isAtivo = btn.dataset.tom === radio.value && radio.checked;
+        if (btn.dataset.tom === 'amigavel') {
+          btn.style.borderColor = isAtivo && radio.value === 'amigavel' ? 'var(--color-success)' : 'var(--border-default)';
+          btn.style.background  = isAtivo && radio.value === 'amigavel' ? 'var(--color-success-muted)' : 'var(--bg-overlay)';
+        } else {
+          btn.style.borderColor = isAtivo && radio.value === 'firme' ? 'var(--color-warning)' : 'var(--border-default)';
+          btn.style.background  = isAtivo && radio.value === 'firme' ? 'var(--color-warning-muted)' : 'var(--bg-overlay)';
+        }
+      });
+      atualizarPreviewWaProm();
+    });
+  });
+
+  // Tornar os cards de tom clicáveis
+  document.querySelectorAll('.wa-tom-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tom = btn.dataset.tom;
+      const radio = document.querySelector(`.wa-prom-tom-radio[value="${tom}"]`);
+      if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
+    });
   });
 
   // Fechar modais ao clicar fora
@@ -1223,6 +1694,7 @@ export const PromissoriasModule = {
     if (unsubscribePromissorias) { unsubscribePromissorias(); unsubscribePromissorias = null; }
     if (unsubscribeClientes)     { unsubscribeClientes();     unsubscribeClientes = null; }
     if (unsubscribeDinheiro)     { unsubscribeDinheiro();     unsubscribeDinheiro = null; }
+    if (unsubscribePix)          { unsubscribePix();          unsubscribePix = null; }
 
     unsubscribeClientes = FirestoreService.escutar('clientes', (clientes) => {
       estado.clientes = clientes;
@@ -1233,11 +1705,15 @@ export const PromissoriasModule = {
       estado.contasDinheiro = contas;
     });
 
+    unsubscribePix = FirestoreService.escutar('pix_chaves', (dados) => {
+      estado.pix = dados;
+    });
+
     unsubscribePromissorias = FirestoreService.escutar(
       'promissorias',
       async (promissorias) => {
         estado.promissorias = promissorias;
-        await atualizarResumoPatrimonio(); // Mantém o patrimônio sempre atualizado (Item 6)
+        await atualizarResumoPatrimonio(); // Atualiza o campo informativo de "Capital em Campo" no patrimônio
         renderizarTelaPrincipal(container);
       },
       { ordenarPor: 'dataVencimento', direcao: 'asc' }

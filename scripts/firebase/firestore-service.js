@@ -244,9 +244,10 @@ export const FirestoreService = {
    * @param {string} colecao
    * @param {function(Object[]): void} callback - Função chamada com os dados atualizados
    * @param {Object} [opcoes] - Mesmas opções do método listar()
+   * @param {function(Error): void} [onErro] - Callback opcional chamado em caso de erro no listener
    * @returns {function} Função para cancelar o listener (unsubscribe)
    */
-  escutar(colecaoNome, callback, opcoes = {}) {
+  escutar(colecaoNome, callback, opcoes = {}, onErro = null) {
     const ref = this.colecaoDoUsuario(colecaoNome);
     if (!ref) return () => {};
 
@@ -263,6 +264,7 @@ export const FirestoreService = {
       },
       (erro) => {
         console.error(`[Firestore] Erro no listener de "${colecaoNome}":`, erro);
+        if (typeof onErro === 'function') onErro(erro);
       }
     );
   },

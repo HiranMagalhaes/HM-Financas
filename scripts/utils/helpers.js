@@ -190,6 +190,11 @@ function calcularStatusVencimento(dataVencimento, statusAtual, statusResolvidos 
     return statusAtual;
   }
 
+  // Guard: data inválida ou ausente → trata como pendente sem data definida
+  if (!dataVencimento || typeof dataVencimento !== 'string') {
+    return 'pendente';
+  }
+
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 

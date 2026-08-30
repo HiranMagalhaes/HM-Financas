@@ -192,12 +192,13 @@ function renderizarModalEdicao() {
                 </label>
                 <input type="text" id="edit-pat-dinheiro" class="form-input" inputmode="decimal" placeholder="0,00">
               </div>
-              <div class="form-group">
+              <div class="form-group" style="opacity: 0.5; pointer-events: none;">
                 <label class="form-label" for="edit-pat-promissorias">
-                  <span class="material-symbols-outlined icon-sm" style="color: var(--text-primary); vertical-align: middle;"></span>
-                  Promissórias (R$)
+                  <span class="material-symbols-outlined icon-sm" style="color: var(--text-muted); vertical-align: middle;"></span>
+                  Capital em Campo (R$)
                 </label>
-                <input type="text" id="edit-pat-promissorias" class="form-input" inputmode="decimal" placeholder="0,00">
+                <input type="text" id="edit-pat-promissorias" class="form-input" inputmode="decimal" placeholder="Auto" readonly>
+                <small class="text-muted" style="display: block; margin-top: 4px;">Calculado automaticamente pelas Promissórias.</small>
               </div>
               <div class="form-group">
                 <label class="form-label" for="edit-pat-cartoes">
@@ -271,11 +272,14 @@ function renderizarTelaPrincipal(container, resumo) {
   const totalHmcred = resumo.hmcred || 0;
   const totalDinheiro = resumo.dinheiro || 0;
   const totalCartoes = resumo.cartoes || 0;
+  // Promissórias são capital que já saiu do HMCRED/Dinheiro — não somam ao patrimônio.
+  // Exibidas apenas como informativo de capital em campo.
   const totalPromissorias = resumo.promissorias || 0;
   
-  // Total consolidado (Ativos - Passivos). 
-  // Dinheiro, HMCRED e Promissórias são ativos (positivos). Cartões (fatura) são passivos (negativos).
-  const patrimonioTotal = totalHmcred + totalDinheiro + totalPromissorias - totalCartoes;
+  // Total consolidado: apenas o capital disponível real.
+  // HMCRED (limiteTotal já reflete capital em caixa) + Dinheiro - Cartões (passivo).
+  // Promissórias NÃO entram pois o dinheiro já saiu do HMCRED/Dinheiro quando foram criadas.
+  const patrimonioTotal = totalHmcred + totalDinheiro - totalCartoes;
 
   container.innerHTML = `
     <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: var(--space-4);">
@@ -315,7 +319,7 @@ function renderizarTelaPrincipal(container, resumo) {
       })}
 
       ${gerarStatCard({
-        label: 'Promissórias (Ativas)',
+        label: 'Capital em Campo',
         valor: formatarMoeda(totalPromissorias),
         icone: 'receipt_long',
         classeIcone: 'background-color: var(--bg-hover); color: var(--text-primary);',
@@ -369,15 +373,16 @@ function renderizarTelaPrincipal(container, resumo) {
                 </td>
                 <td class="text-right value-sensitive text-success">${formatarMoeda(totalDinheiro)}</td>
               </tr>
-              <tr>
-                <td><span class="badge badge-success">Ativo</span></td>
+              <tr style="opacity: 0.65;">
+                <td><span class="badge badge-neutral">Info</span></td>
                 <td>
                   <div style="display: flex; align-items: center; gap: var(--space-2);">
-                    <span class="material-symbols-outlined text-primary icon-sm">receipt_long</span>
-                    Promissórias em Aberto
+                    <span class="material-symbols-outlined text-muted icon-sm">receipt_long</span>
+                    Capital em Campo (Promissórias)
                   </div>
+                  <small style="color: var(--text-muted); font-size: 11px;">Já descontado do HMCRED/Dinheiro</small>
                 </td>
-                <td class="text-right value-sensitive text-primary">${formatarMoeda(totalPromissorias)}</td>
+                <td class="text-right value-sensitive text-muted">${formatarMoeda(totalPromissorias)}</td>
               </tr>
               <tr>
                 <td><span class="badge badge-danger">Passivo</span></td>
@@ -431,17 +436,28 @@ export const PatrimonioModule = {
       unsubscribeListener = null;
     }
 
-    // Tenta buscar o resumo inicial para ver se existe
-    const res = await FirestoreService.obter('patrimonio', 'resumo');
-    
-    // Se falhou por não existir documento, mostra estado vazio ou inicia com zero
-    if (!res.sucesso) {
-      // Renderiza com valores zerados e permite edição manual para começar
-      renderizarTelaPrincipal(container, { hmcred: 0, dinheiro: 0, cartoes: 0, promissorias: 0 });
-      return;
+    // Lê fontes primárias em paralelo (HMCRED e Dinheiro sempre frescos)
+    const [resPatrimonio, resHmcred, resDinheiro] = await Promise.all([
+      FirestoreService.obter('patrimonio', 'resumo'),
+      FirestoreService.obter('hmcred', 'configuracao'),
+      FirestoreService.obter('dinheiro', 'configuracao'),
+    ]);
+
+    // Base: usa cache ou zeros
+    const resumo = resPatrimonio.sucesso
+      ? { ...resPatrimonio.dados }
+      : { hmcred: 0, dinheiro: 0, cartoes: 0, promissorias: 0 };
+
+    // HMCRED: sempre usa capitalDisponivel direto (nunca limiteTotal do cache)
+    if (resHmcred.sucesso) {
+      resumo.hmcred = resHmcred.dados.capitalDisponivel || 0;
     }
 
-    // Se existe, renderiza a tela e depois anexa o listener para atualizar em tempo real
-    renderizarTelaPrincipal(container, res.dados);
+    // Dinheiro: sempre usa saldoTotal direto
+    if (resDinheiro.sucesso) {
+      resumo.dinheiro = resDinheiro.dados.saldoTotal || 0;
+    }
+
+    renderizarTelaPrincipal(container, resumo);
   }
 };

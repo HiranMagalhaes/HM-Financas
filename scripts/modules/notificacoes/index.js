@@ -15,13 +15,16 @@ import { calcularStatusVencimento } from '../../utils/helpers.js';
 let estado = {
   cobrancas: [],
   promissorias: [],
+  hmcred: [],
   notificacoes: [], // A lista combinada e ordenada
   carregandoCobrancas: true,
-  carregandoPromissorias: true
+  carregandoPromissorias: true,
+  carregandoHmcred: true
 };
 
 let unsubscribeCobrancas = null;
 let unsubscribePromissorias = null;
+let unsubscribeHmcred = null;
 let badgesHabilitados = false; // Controle para evitar loop ou múltiplas chamadas
 let nativeNotificationsRequested = false;
 
@@ -66,6 +69,26 @@ function processarNotificacoes() {
         status: statusVenc
       });
     }
+  });
+
+  // 3. Processar HmCred (parcelas de operações não quitadas)
+  estado.hmcred.forEach(op => {
+    if (op.status === 'pago' || !op.listaParcelas) return;
+    op.listaParcelas.forEach((parc, idx) => {
+      if (parc.pago || !parc.vencimento) return;
+      const statusVenc = calcularStatusVencimento(parc.vencimento, 'pendente');
+      if (statusVenc === 'atrasada' || statusVenc === 'amanha' || statusVenc === 'hoje') {
+        lista.push({
+          idOriginal: `${op.id}_parc_${idx}`,
+          tipoOrigem: 'cobranca',
+          tipoLabel: 'HmCred',
+          nomeCliente: op.clienteNome || op.destino || 'Cliente Desconhecido',
+          valor: parc.valor || 0,
+          dataVencimento: parc.vencimento,
+          status: statusVenc
+        });
+      }
+    });
   });
 
   // 3. Ordenação: Atrasadas > Hoje > Amanhã. Desempate: data mais antiga.
@@ -319,6 +342,12 @@ export const NotificacoesModule = {
         estado.carregandoPromissorias = false;
         processarNotificacoes();
       });
+
+      unsubscribeHmcred = FirestoreService.escutar('hmcred_operacoes', (dados) => {
+        estado.hmcred = dados;
+        estado.carregandoHmcred = false;
+        processarNotificacoes();
+      });
     }
   },
 
@@ -343,7 +372,7 @@ export const NotificacoesModule = {
     });
 
     return {
-      carregando: estado.carregandoCobrancas || estado.carregandoPromissorias,
+      carregando: estado.carregandoCobrancas || estado.carregandoPromissorias || estado.carregandoHmcred,
       totalPendencias: estado.notificacoes.length,
       vencidas: { quantidade: qteVencidas, valor: valorVencidas },
       aVencer: { quantidade: qteAVencer, valor: valorAVencer }
@@ -359,7 +388,7 @@ export const NotificacoesModule = {
 
     this.iniciarMonitoramentoBadges();
 
-    if (estado.carregandoCobrancas || estado.carregandoPromissorias) {
+    if (estado.carregandoCobrancas || estado.carregandoPromissorias || estado.carregandoHmcred) {
       container.innerHTML = `
         <div class="empty-state" style="padding: var(--space-16);">
           <span class="material-symbols-outlined empty-state-icon" style="animation: spin 1s linear infinite;">sync</span>

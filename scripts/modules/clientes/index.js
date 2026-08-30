@@ -13,12 +13,82 @@ import { mostrarToast }     from '../../utils/helpers.js';
 
 let estado = {
   clientes: [],
-  cobrancas: [], // para histórico do cliente
+  cobrancas: [],   // cobranças avulsas — usadas para calcular saldo em aberto dinamicamente
+  hmcredOps: [],   // operações HmCred — também entram no cálculo de saldo em aberto
+  promissorias: [], // promissórias ativas — para exibir no card do cliente
   carregando: true
 };
 
-let unsubscribeClientes = null;
+let unsubscribeClientes  = null;
 let unsubscribeCobrancas = null;
+let unsubscribeHmcred    = null;
+let unsubscribePromissorias = null;
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   HELPERS — CÁLCULO DINÂMICO DE SALDO
+───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Calcula o total em aberto de um cliente dinamicamente,
+ * somando cobranças avulsas não pagas + parcelas HmCred não pagas.
+ * Isso substitui o campo `cobrancasEmAberto` do Firestore que pode ficar desatualizado.
+ *
+ * @param {string} clienteId
+ * @returns {number}
+ */
+function calcularEmAberto(clienteId) {
+  // Cobranças avulsas não pagas
+  const cobAvulsas = estado.cobrancas
+    .filter(cob => cob.clienteId === clienteId && cob.status !== 'paga')
+    .reduce((acc, cob) => acc + (cob.valor || 0), 0);
+
+  // Parcelas HmCred não pagas vinculadas ao cliente
+  const cobHmcred = estado.hmcredOps
+    .filter(op => op.clienteId === clienteId && op.status !== 'pago' && op.listaParcelas)
+    .reduce((acc, op) => {
+      const nãoPagas = op.listaParcelas
+        .filter(p => !p.pago)
+        .reduce((s, p) => s + (p.valor || 0), 0);
+      return acc + nãoPagas;
+    }, 0);
+
+  // Promissórias ativas vinculadas ao cliente (capital em aberto)
+  const cobPromissorias = estado.promissorias
+    .filter(p => p.clienteId === clienteId && p.status !== 'recebida')
+    .reduce((acc, p) => acc + (p.capitalRestante || p.valorInvestido || 0), 0);
+
+  return cobAvulsas + cobHmcred + cobPromissorias;
+}
+
+/**
+ * Calcula apenas o valor de cobranças avulsas + HMCRED em aberto (sem promissórias).
+ * Usado para exibir o breakdown no modal de detalhes.
+ */
+function calcularCobranças(clienteId) {
+  const cobAvulsas = estado.cobrancas
+    .filter(cob => cob.clienteId === clienteId && cob.status !== 'paga')
+    .reduce((acc, cob) => acc + (cob.valor || 0), 0);
+
+  const cobHmcred = estado.hmcredOps
+    .filter(op => op.clienteId === clienteId && op.status !== 'pago' && op.listaParcelas)
+    .reduce((acc, op) => {
+      const nãoPagas = op.listaParcelas
+        .filter(p => !p.pago)
+        .reduce((s, p) => s + (p.valor || 0), 0);
+      return acc + nãoPagas;
+    }, 0);
+
+  return cobAvulsas + cobHmcred;
+}
+
+/**
+ * Calcula o capital de promissórias ativas de um cliente.
+ */
+function calcularPromissoriasEmAberto(clienteId) {
+  return estado.promissorias
+    .filter(p => p.clienteId === clienteId && p.status !== 'recebida')
+    .reduce((acc, p) => acc + (p.capitalRestante || p.valorInvestido || 0), 0);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    AÇÕES DO USUÁRIO — CRUD
@@ -103,7 +173,7 @@ async function atualizarCliente(evento) {
 async function excluirCliente(id) {
   const cliente = estado.clientes.find(c => c.id === id);
   const nomeCliente = cliente ? `"${cliente.nome}"` : 'este cliente';
-  const emAberto = (cliente.cobrancasEmAberto || 0) + (cliente.promissoriasEmAberto || 0);
+  const emAberto = calcularEmAberto(cliente.id);
 
   if (emAberto > 0) {
     mostrarToast({ tipo: 'danger', titulo: 'Ação não permitida', mensagem: `Não é possível excluir cliente com saldo em aberto.` });
@@ -137,16 +207,26 @@ function abrirDetalhesCliente(id) {
     .filter(cob => cob.clienteId === id)
     .sort((a, b) => new Date(b.criadoEm?.toDate?.() || 0) - new Date(a.criadoEm?.toDate?.() || 0));
 
+  const promissoriasCliente = estado.promissorias
+    .filter(p => p.clienteId === id && p.status !== 'recebida');
+
   const detalhesNome = document.getElementById('detalhes-cliente-nome');
   const detalhesEmAberto = document.getElementById('detalhes-cliente-em-aberto');
+  const detalhesCobEmAberto = document.getElementById('detalhes-cliente-cob-em-aberto');
+  const detalhesPromEmAberto = document.getElementById('detalhes-cliente-prom-em-aberto');
   const detalhesTelefone = document.getElementById('detalhes-cliente-telefone');
   const detalhesObs = document.getElementById('detalhes-cliente-obs');
   const listaHistorico = document.getElementById('detalhes-cliente-historico');
+  const listaProm = document.getElementById('detalhes-cliente-promissorias');
 
-  const emAberto = (cliente.cobrancasEmAberto || 0) + (cliente.promissoriasEmAberto || 0);
+  const emAberto = calcularEmAberto(cliente.id);
+  const cobAberto = calcularCobranças(cliente.id);
+  const promAberto = calcularPromissoriasEmAberto(cliente.id);
 
   if (detalhesNome) detalhesNome.textContent = cliente.nome;
   if (detalhesEmAberto) detalhesEmAberto.textContent = formatarMoeda(emAberto);
+  if (detalhesCobEmAberto) detalhesCobEmAberto.textContent = formatarMoeda(cobAberto);
+  if (detalhesPromEmAberto) detalhesPromEmAberto.textContent = formatarMoeda(promAberto);
   if (detalhesTelefone) detalhesTelefone.textContent = cliente.telefone || 'Não informado';
   if (detalhesObs) detalhesObs.textContent = cliente.observacao || 'Nenhuma observação.';
 
@@ -172,6 +252,29 @@ function abrirDetalhesCliente(id) {
                 <span class="material-symbols-outlined icon-sm">${statusIcon}</span>
                 ${cob.status.toUpperCase()}
               </p>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // Lista de promissórias ativas do cliente
+  if (listaProm) {
+    if (promissoriasCliente.length === 0) {
+      listaProm.innerHTML = '<p class="text-muted text-sm text-center" style="padding: var(--space-4);">Nenhuma promissória ativa.</p>';
+    } else {
+      listaProm.innerHTML = promissoriasCliente.map(p => {
+        const modLabel = { unico: 'Pag. Único', amortizacao: 'Amortização', juros_mensais: 'Juros/mês' }[p.modalidade] || 'Promissória';
+        return `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-bottom: 1px solid var(--border-default);">
+            <div>
+              <p style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary);">${p.descricao || 'Promissória'}</p>
+              <p style="font-size: var(--text-xs); color: var(--text-muted);">Venc: ${formatarData(p.dataVencimento)} &bull; ${modLabel}</p>
+            </div>
+            <div style="text-align: right;">
+              <p class="value-sensitive" style="font-size: var(--text-sm); font-weight: var(--font-bold); color: var(--color-gold);">${formatarMoeda(p.capitalRestante || p.valorInvestido || 0)}</p>
+              <p style="font-size: var(--text-xs); color: var(--text-muted);">capital em aberto</p>
             </div>
           </div>
         `;
@@ -217,8 +320,9 @@ function renderizarCardCliente(cliente) {
         <div style="display: flex; align-items: center; gap: var(--space-6);">
           <div style="text-align: right;">
             <p style="margin: 0; font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase;">Em Aberto</p>
-            <p class="value-sensitive" style="margin: 0; font-size: var(--text-base); font-weight: var(--font-bold); color: ${(cliente.cobrancasEmAberto || 0) + (cliente.promissoriasEmAberto || 0) > 0 ? 'var(--color-gold)' : 'var(--text-muted)'};">
-              ${formatarMoeda((cliente.cobrancasEmAberto || 0) + (cliente.promissoriasEmAberto || 0))}
+            <p class="value-sensitive" style="margin: 0; font-size: var(--text-base); font-weight: var(--font-bold); color: ${calcularEmAberto(cliente.id) > 0 ? 'var(--color-gold)' : 'var(--text-muted)'};">
+              ${formatarMoeda(calcularEmAberto(cliente.id))}
+
             </p>
           </div>
           <div style="display: flex; gap: var(--space-1);">
@@ -320,7 +424,7 @@ function renderizarModais() {
 
     <!-- Modal: Detalhes do Cliente -->
     <div class="modal-overlay" id="modal-detalhes-cliente">
-      <div class="modal" style="max-width: 500px; width: 100%;">
+      <div class="modal" style="max-width: 520px; width: 100%;">
         <div class="modal-header">
           <h3 class="modal-title">Detalhes do Cliente</h3>
           <button type="button" class="btn btn-ghost btn-icon" onclick="document.getElementById('modal-detalhes-cliente').classList.remove('open')">
@@ -339,10 +443,26 @@ function renderizarModais() {
               <p style="font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase;">Total em Aberto</p>
               <p id="detalhes-cliente-em-aberto" class="value-sensitive" style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-gold);"></p>
             </div>
+            <!-- Breakdown: Cobranças vs Promissórias -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-subtle);">
+              <div style="text-align: center; background: var(--bg-base); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);">
+                <p style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 2px;">Cobranças / HMCRED</p>
+                <p id="detalhes-cliente-cob-em-aberto" class="value-sensitive" style="font-size: var(--text-base); font-weight: var(--font-bold); color: var(--text-primary); margin: 0;"></p>
+              </div>
+              <div style="text-align: center; background: var(--bg-base); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);">
+                <p style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 2px;">Promissórias</p>
+                <p id="detalhes-cliente-prom-em-aberto" class="value-sensitive" style="font-size: var(--text-base); font-weight: var(--font-bold); color: var(--color-gold); margin: 0;"></p>
+              </div>
+            </div>
           </div>
           
           <h5 style="font-size: var(--text-base); margin-bottom: var(--space-2); color: var(--text-primary);">Histórico de Cobranças</h5>
-          <div id="detalhes-cliente-historico" style="max-height: 250px; overflow-y: auto; background-color: var(--bg-hover); border-radius: var(--radius-md);">
+          <div id="detalhes-cliente-historico" style="max-height: 180px; overflow-y: auto; background-color: var(--bg-hover); border-radius: var(--radius-md); margin-bottom: var(--space-4);">
+            <!-- Preenchido via JS -->
+          </div>
+
+          <h5 style="font-size: var(--text-base); margin-bottom: var(--space-2); color: var(--text-primary);">Promissórias Ativas</h5>
+          <div id="detalhes-cliente-promissorias" style="max-height: 180px; overflow-y: auto; background-color: var(--bg-hover); border-radius: var(--radius-md);">
             <!-- Preenchido via JS -->
           </div>
         </div>
@@ -372,7 +492,8 @@ function atualizarLista(container) {
 }
 
 function renderizarTelaPrincipal(container) {
-  const totalReceber = estado.clientes.reduce((acc, c) => acc + ((c.cobrancasEmAberto || 0) + (c.promissoriasEmAberto || 0)), 0);
+  // Calcula o total dinamicamente a partir dos dados em memória
+  const totalReceber = estado.clientes.reduce((acc, c) => acc + calcularEmAberto(c.id), 0);
   
   container.innerHTML = `
     <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: var(--space-4);">
@@ -434,27 +555,29 @@ function registrarEventosTela(container) {
   const inputBusca = document.getElementById('busca-cliente');
   if (inputBusca) inputBusca.addEventListener('input', () => atualizarLista(container));
 
-  // Delegação
-  container.addEventListener('click', (e) => {
-    let alvo = e.target;
-    while (alvo && alvo !== container) {
-      if (alvo.getAttribute && alvo.getAttribute('data-acao')) {
-        break;
+  if (!container.dataset.eventosRegistradosClientes) {
+    container.addEventListener('click', (e) => {
+      let alvo = e.target;
+      while (alvo && alvo !== container) {
+        if (alvo.getAttribute && alvo.getAttribute('data-acao')) {
+          break;
+        }
+        alvo = alvo.parentNode;
       }
-      alvo = alvo.parentNode;
-    }
-    
-    if (alvo && alvo.getAttribute) {
-      const acao = alvo.getAttribute('data-acao');
-      const id = alvo.getAttribute('data-id');
       
-      if (acao === 'detalhes') abrirDetalhesCliente(id);
-      else if (acao === 'editar') abrirModalEdicao(id);
-      else if (acao === 'excluir') excluirCliente(id);
-      
-      e.stopPropagation();
-    }
-  });
+      if (alvo && alvo.getAttribute) {
+        const acao = alvo.getAttribute('data-acao');
+        const id = alvo.getAttribute('data-id');
+        
+        if (acao === 'detalhes') abrirDetalhesCliente(id);
+        else if (acao === 'editar') abrirModalEdicao(id);
+        else if (acao === 'excluir') excluirCliente(id);
+        
+        e.stopPropagation();
+      }
+    });
+    container.dataset.eventosRegistradosClientes = 'true';
+  }
 
   container.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', (e) => {
@@ -475,13 +598,36 @@ export const ClientesModule = {
       </div>
     `;
 
-    if (unsubscribeClientes) { unsubscribeClientes(); unsubscribeClientes = null; }
-    if (unsubscribeCobrancas) { unsubscribeCobrancas(); unsubscribeCobrancas = null; }
+    if (unsubscribeClientes)      { unsubscribeClientes();      unsubscribeClientes      = null; }
+    if (unsubscribeCobrancas)     { unsubscribeCobrancas();     unsubscribeCobrancas     = null; }
+    if (unsubscribeHmcred)        { unsubscribeHmcred();        unsubscribeHmcred        = null; }
+    if (unsubscribePromissorias)  { unsubscribePromissorias();  unsubscribePromissorias  = null; }
 
+    // Cobranças avulsas: re-renderiza a lista para que "Em Aberto" fique sempre atualizado
     unsubscribeCobrancas = FirestoreService.escutar(
       'cobrancas',
       (cobrancas) => {
         estado.cobrancas = cobrancas;
+        // Re-renderiza somente a lista (sem reconstruir toda a tela)
+        atualizarLista(container);
+      }
+    );
+
+    // Operações HmCred vinculadas a clientes
+    unsubscribeHmcred = FirestoreService.escutar(
+      'hmcred_operacoes',
+      (ops) => {
+        estado.hmcredOps = ops;
+        atualizarLista(container);
+      }
+    );
+
+    // Promissórias ativas — para exibir no saldo em aberto do cliente
+    unsubscribePromissorias = FirestoreService.escutar(
+      'promissorias',
+      (promissorias) => {
+        estado.promissorias = promissorias;
+        atualizarLista(container);
       }
     );
 

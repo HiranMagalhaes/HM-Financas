@@ -25,10 +25,12 @@ let estado = {
   configuracao: { limiteTotal: 0, capitalDisponivel: 0 },
   operacoes: [],
   cartoes: [],
+  clientes: [],
   carregando: true
 };
 let unsubscribeOperacoes = null;
 let unsubscribeCartoes = null;
+let unsubscribeClientes = null;
 let _container = null;
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -37,13 +39,15 @@ let _container = null;
 
 /**
  * Atualiza o resumo de patrimônio (bloco HMCRED) com base nos dados atuais.
+ * Usa capitalDisponivel (não limiteTotal) para refletir o capital líquido em caixa.
+ * Quando dinheiro sai para operações/promissórias, o patrimônio cai corretamente.
  */
 async function atualizarPatrimonioHmcred() {
   const resumoExistente = await FirestoreService.obter('patrimonio', 'resumo');
   const patrimonioDocs = resumoExistente.sucesso ? resumoExistente.dados : { hmcred: 0, dinheiro: 0, cartoes: 0 };
   
-  // Patrimônio HMCRED reflete o Limite Total (capital que o usuário separou para HMCRED)
-  patrimonioDocs.hmcred = estado.configuracao.limiteTotal || 0;
+  // Patrimônio HMCRED = capital disponível em caixa (sobe quando recebe, cai quando empresta)
+  patrimonioDocs.hmcred = estado.configuracao.capitalDisponivel || 0;
 
   await FirestoreService.salvar('patrimonio', 'resumo', patrimonioDocs);
 }
@@ -142,14 +146,17 @@ async function criarOperacao(evento) {
 
   const tipoOperacao = formData.get('tipoOperacao') || 'credito';
   const valorConcedido = parseMoeda(formData.get('valorConcedido'));
-
-  if (valorConcedido > estado.configuracao.capitalDisponivel) {
-    mostrarToast({ tipo: 'warning', titulo: 'Saldo insuficiente', mensagem: `Capital disponível: ${formatarMoeda(estado.configuracao.capitalDisponivel)}` });
-    return;
-  }
+  const clienteId = formData.get('clienteId');
+  const cliente = clienteId ? estado.clientes.find(c => c.id === clienteId) : null;
 
   if (valorConcedido <= 0) {
     mostrarToast({ tipo: 'warning', titulo: 'Valor inválido', mensagem: 'Informe um valor maior que zero.' });
+    return;
+  }
+
+  // Valida capital disponível APENAS para crédito próprio (retirada_cartao usa o limite do cartão)
+  if (tipoOperacao === 'credito' && valorConcedido > estado.configuracao.capitalDisponivel) {
+    mostrarToast({ tipo: 'warning', titulo: 'Saldo insuficiente', mensagem: `Capital disponível: ${formatarMoeda(estado.configuracao.capitalDisponivel)}` });
     return;
   }
 
@@ -172,6 +179,10 @@ async function criarOperacao(evento) {
       return;
     }
 
+    // Gera parcelas usando o diaVencimento do cartão (não a data de concessão)
+    const diaVenc = cartao.diaVencimento || new Date().getDate();
+    const parcelasGeradas = gerarListaParcelasCartao(diaVenc, parcelas, valorParcela);
+
     novaOperacao = {
       destino: formData.get('destino'),
       valorConcedido,
@@ -185,17 +196,32 @@ async function criarOperacao(evento) {
       dataPrevista: formData.get('dataPrevista'),
       tipoOperacao: 'retirada_cartao',
       status: 'aberto',
-      listaParcelas: gerarListaParcelas(formData.get('dataConcessao'), parcelas, valorParcela)
+      clienteId: cliente ? cliente.id : null,
+      clienteNome: cliente ? cliente.nome : null,
+      listaParcelas: parcelasGeradas
     };
   } else {
     // Crédito padrão com juros
     const taxaJuros = parseFloat(formData.get('taxaJuros')) || 0;
     const meses = parseInt(formData.get('meses')) || 0;
-    let valorReceber = parseMoeda(formData.get('valorReceber'));
+    // Campo readonly não é enviado pelo FormData em todos os navegadores;
+    // lê diretamente do DOM para garantir o valor calculado.
+    const inputValorReceber = document.getElementById('op-valor-receber');
+    let valorReceber = inputValorReceber ? parseMoeda(inputValorReceber.value) : parseMoeda(formData.get('valorReceber'));
 
-    // Se não digitou o valor a receber mas informou taxa e meses, recalcula
-    if (valorReceber <= 0 && taxaJuros > 0 && meses > 0) {
-      valorReceber = valorConcedido + (valorConcedido * (taxaJuros / 100) * meses);
+    // Fallback: se valorReceber ainda for 0, recalcula a partir dos campos
+    if (valorReceber <= 0 && meses > 0) {
+      if (taxaJuros > 0) {
+        // Com juros: aplica a taxa
+        valorReceber = valorConcedido + (valorConcedido * (taxaJuros / 100) * meses);
+      } else {
+        // Sem juros: valor a receber = valor concedido
+        valorReceber = valorConcedido;
+      }
+    }
+    // Último recurso: se meses = 0 e valorReceber = 0, usa o valorConcedido
+    if (valorReceber <= 0) {
+      valorReceber = valorConcedido;
     }
 
     novaOperacao = {
@@ -208,6 +234,8 @@ async function criarOperacao(evento) {
       dataPrevista: formData.get('dataPrevista'),
       tipoOperacao: 'credito',
       status: 'aberto',
+      clienteId: cliente ? cliente.id : null,
+      clienteNome: cliente ? cliente.nome : null,
       listaParcelas: gerarListaParcelas(formData.get('dataConcessao'), meses || 1, valorReceber / (meses || 1))
     };
   }
@@ -289,6 +317,27 @@ function gerarListaParcelas(dataInicial, totalParcelas, valorPorParcela) {
 }
 
 /**
+ * Gera parcelas para retirada via cartão, usando o diaVencimento do cartão.
+ * A 1ª parcela vence no próximo mês (no dia de vencimento do cartão).
+ */
+function gerarListaParcelasCartao(diaVencimento, totalParcelas, valorPorParcela) {
+  const parcelas = [];
+  const hoje = new Date();
+
+  for (let i = 1; i <= totalParcelas; i++) {
+    const venc = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento);
+    parcelas.push({
+      id: gerarIdUnico() + '_' + i,
+      numero: i,
+      valor: valorPorParcela,
+      vencimento: venc.toISOString().split('T')[0],
+      pago: false
+    });
+  }
+  return parcelas;
+}
+
+/**
  * Paga uma parcela individualmente.
  */
 async function pagarParcela(idOperacao, idParcela) {
@@ -340,8 +389,18 @@ async function pagarParcela(idOperacao, idParcela) {
       categoria: 'HMCRED - Recebimento',
       data: new Date().toISOString().split('T')[0]
     });
-  } else {
-    // Retirada Cartão
+  } else if (operacao.tipoOperacao === 'retirada_cartao') {
+    // Retirada Cartão: devolve o valor da parcela ao limite do cartão de origem
+    if (operacao.cartaoOrigemId) {
+      const cartaoOrigem = estado.cartoes.find(c => c.id === operacao.cartaoOrigemId);
+      if (cartaoOrigem) {
+        const novoValorUsado = Math.max(0, (cartaoOrigem.valorUsado || 0) - parcela.valor);
+        await FirestoreService.atualizar('cartoes_lista', cartaoOrigem.id, {
+          valorUsado: novoValorUsado
+        });
+      }
+    }
+
     await FirestoreService.criar('lancamentos_hist', {
       modulo: 'hmcred',
       tipo: 'receita',
@@ -389,6 +448,23 @@ async function marcarComoPaga(id) {
 
     mostrarToast({ tipo: 'success', titulo: 'Operação paga!', mensagem: `${formatarMoeda(operacao.valorReceber)} devolvido ao capital HMCRED.` });
   } else if (operacao.tipoOperacao === 'retirada_cartao') {
+    // Devolve o limite ao cartão de origem
+    if (operacao.cartaoOrigemId) {
+      const cartaoOrigem = estado.cartoes.find(c => c.id === operacao.cartaoOrigemId);
+      if (cartaoOrigem) {
+        // Calcula quanto falta devolver (desconta parcelas já pagas)
+        const parcelasPagas = operacao.listaParcelas ? operacao.listaParcelas.filter(p => p.pago).length : 0;
+        const valorJaDevolvido = parcelasPagas * (operacao.valorParcela || 0);
+        const valorADevolver = Math.max(0, operacao.valorConcedido - valorJaDevolvido);
+        if (valorADevolver > 0) {
+          const novoValorUsado = Math.max(0, (cartaoOrigem.valorUsado || 0) - valorADevolver);
+          await FirestoreService.atualizar('cartoes_lista', cartaoOrigem.id, {
+            valorUsado: novoValorUsado
+          });
+        }
+      }
+    }
+
     // Registra o recebimento no histórico
     await FirestoreService.criar('lancamentos_hist', {
       modulo: 'hmcred',
@@ -458,6 +534,8 @@ function renderizarModais() {
       }).join('')
     : '<option value="">Nenhum cartão cadastrado</option>';
 
+  const opcoesClientes = estado.clientes.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+
   return `
     <!-- ── Modal: Nova Operação ── -->
     <div class="modal-overlay" id="modal-nova-operacao" role="dialog" aria-modal="true">
@@ -484,6 +562,15 @@ function renderizarModais() {
                 <span class="material-symbols-outlined icon-sm">credit_card</span>
                 Retirada via Cartão
               </button>
+            </div>
+
+            <!-- Campo: Cliente (Opcional) -->
+            <div class="form-group">
+              <label class="form-label" for="op-cliente">Vincular a Cliente (Opcional)</label>
+              <select id="op-cliente" name="clienteId" class="form-input form-select">
+                <option value="">Nenhum (Avulso)</option>
+                ${opcoesClientes}
+              </select>
             </div>
 
             <!-- Campo: Destino -->
@@ -523,7 +610,7 @@ function renderizarModais() {
                 </div>
               </div>
               <div id="preview-juros" style="display:none; background: var(--color-success-muted); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4); font-size: var(--text-sm);">
-                <span class="material-symbols-outlined icon-sm" style="color: var(--color-success); vertical-align: middle;"></span>
+                <span class="material-symbols-outlined icon-sm" style="color: var(--color-success); vertical-align: middle;">trending_up</span>
                 <span id="preview-juros-texto" style="color: var(--color-success); font-weight: var(--font-semibold);"></span>
               </div>
             </div>
@@ -545,7 +632,7 @@ function renderizarModais() {
                 </select>
               </div>
               <div id="preview-parcela" style="background: var(--color-info-muted); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4); font-size: var(--text-sm); display: none;">
-                <span class="material-symbols-outlined icon-sm" style="color: var(--color-info); vertical-align: middle;"></span>
+                <span class="material-symbols-outlined icon-sm" style="color: var(--color-info); vertical-align: middle;">credit_card</span>
                 <span id="preview-parcela-texto" style="color: var(--color-info); font-weight: var(--font-semibold);"></span>
               </div>
             </div>
@@ -586,7 +673,7 @@ function renderizarModais() {
         <form id="form-editar-capital" novalidate>
           <div class="modal-body">
             <div style="background-color: var(--color-info-muted); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); font-size: var(--text-sm); color: var(--text-secondary);">
-              <span class="material-symbols-outlined icon-sm" style="vertical-align: middle;"></span>
+              <span class="material-symbols-outlined icon-sm" style="vertical-align: middle;">info</span>
               Use para acrescentar capital ou corrigir os valores base do HMCRED.
             </div>
             <div class="form-group">
@@ -623,11 +710,20 @@ function renderizarLinhaOperacao(op) {
     ? `<span class="badge badge-neutral" style="font-size: 10px;">Cartão ${op.parcelas}x (${op.cartaoOrigemNome || '?'})</span>`
     : `<span class="badge badge-neutral" style="font-size: 10px;">${op.taxaJuros ? op.taxaJuros + '%/mês' : 'Crédito'}</span>`;
 
+  // Linha extra com data de concessão visível na segunda linha do destino
+  const dataConcessaoLabel = op.dataConcessao
+    ? `<div style="font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px;">
+        <span class="material-symbols-outlined" style="font-size: 11px; vertical-align: middle;">event</span>
+        Concedido em: <strong>${formatarData(op.dataConcessao)}</strong>
+       </div>`
+    : '';
+
   return `
     <tr>
       <td>
         <div>${op.destino}</div>
         ${tipoLabel}
+        ${dataConcessaoLabel}
       </td>
       <td class="value-sensitive">${formatarMoeda(op.valorConcedido)}</td>
       <td class="value-sensitive text-success">${formatarMoeda(op.valorReceber)}</td>
@@ -776,7 +872,7 @@ function renderizarTelaPrincipal(container) {
               <th>Destino / Cliente</th>
               <th>Concedido</th>
               <th>A Receber</th>
-              <th>Previsão</th>
+              <th>Previsão Retorno</th>
               <th>Status</th>
               <th class="text-right">Ações</th>
             </tr>
@@ -827,12 +923,18 @@ function renderizarTelaPrincipal(container) {
     const taxa  = parseFloat(inpTaxa.value) || 0;
     const meses = parseInt(inpMeses.value) || 0;
 
-    if (valor > 0 && taxa > 0 && meses > 0) {
-      const jurosTotal = valor * (taxa / 100) * meses;
-      const totalFinal = valor + jurosTotal;
-      inpReceiv.value = totalFinal.toFixed(2).replace('.', ',');
-      previewTx.textContent = `${formatarMoeda(valor)} × ${taxa}% × ${meses} mês${meses > 1 ? 'es' : ''} = Juros de ${formatarMoeda(jurosTotal)} → Total: ${formatarMoeda(totalFinal)}`;
-      preview.style.display = 'block';
+    if (valor > 0 && meses > 0) {
+      if (taxa > 0) {
+        const jurosTotal = valor * (taxa / 100) * meses;
+        const totalFinal = valor + jurosTotal;
+        inpReceiv.value = totalFinal.toFixed(2).replace('.', ',');
+        previewTx.textContent = `${formatarMoeda(valor)} × ${taxa}% × ${meses} mês${meses > 1 ? 'es' : ''} = Juros de ${formatarMoeda(jurosTotal)} → Total: ${formatarMoeda(totalFinal)}`;
+        preview.style.display = 'block';
+      } else {
+        // Sem juros: valor a receber = valor concedido
+        inpReceiv.value = valor.toFixed(2).replace('.', ',');
+        preview.style.display = 'none';
+      }
     } else {
       inpReceiv.value = '';
       preview.style.display = 'none';
@@ -941,16 +1043,30 @@ export const HmcredModule = {
     if (unsubscribeOperacoes) unsubscribeOperacoes();
     unsubscribeOperacoes = FirestoreService.escutar('hmcred_operacoes', (operacoes) => {
       estado.operacoes = operacoes;
-      renderizarTelaPrincipal(container);
+      // Não re-renderiza se o modal estiver aberto (evita resetar o estado do formulário)
+      const modalAberto = document.getElementById('modal-nova-operacao')?.classList.contains('open');
+      if (!modalAberto) renderizarTelaPrincipal(container);
     }, { ordenarPor: 'dataPrevista', direcao: 'asc' });
 
-    // Escutar cartões em tempo real
+    // Escutar cartões em tempo real (apenas para manter o estado atualizado)
     if (unsubscribeCartoes) unsubscribeCartoes();
     unsubscribeCartoes = FirestoreService.escutar('cartoes_lista', (cartoes) => {
       estado.cartoes = cartoes;
-      if (document.getElementById('modal-nova-operacao')) {
-        renderizarTelaPrincipal(container); // Re-renderiza para atualizar as opções de cartão
-      }
+      // Só re-renderiza se a rota ativa for hmcred (evita abrir a aba de cartões)
+      const rotaAtual = window.location.hash.replace('#', '');
+      if (rotaAtual !== 'hmcred') return;
+      // Não re-renderiza se o modal estiver aberto
+      const modalAberto = document.getElementById('modal-nova-operacao')?.classList.contains('open');
+      if (!modalAberto) renderizarTelaPrincipal(container);
+    });
+
+    // Escutar clientes em tempo real
+    if (unsubscribeClientes) unsubscribeClientes();
+    unsubscribeClientes = FirestoreService.escutar('clientes', (clientes) => {
+      estado.clientes = clientes;
+      // Não re-renderiza se o modal estiver aberto
+      const modalAberto = document.getElementById('modal-nova-operacao')?.classList.contains('open');
+      if (!modalAberto) renderizarTelaPrincipal(container);
     });
 
     // Se estiver vazio (primeiro acesso) a tela já reage

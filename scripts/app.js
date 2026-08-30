@@ -241,6 +241,12 @@ function renderizarLayoutBase(usuario) {
             <span class="nav-label">Cobranças</span>
           </div>
 
+          <div class="nav-item" data-route="relatorio" role="button" tabindex="0"
+               aria-label="Relatório">
+            <span class="material-symbols-outlined nav-icon">bar_chart</span>
+            <span class="nav-label">Relatório</span>
+          </div>
+
           <!-- Seção de sistema -->
           <p class="sidebar-section-label" style="margin-top: var(--space-4)">Sistema</p>
 
@@ -391,6 +397,14 @@ function registrarEventosLayout() {
     });
   }
 
+  // --- Botão de Notificações (Sininho) ---
+  const btnNotificacoes = document.getElementById('btn-notificacoes');
+  if (btnNotificacoes) {
+    btnNotificacoes.addEventListener('click', () => {
+      if (Router) Router.navegar('notificacoes');
+    });
+  }
+
   // --- Toggle de Visibilidade de Valores ---
   const btnValues = document.getElementById('btn-toggle-values');
   const valuesIcon = document.getElementById('values-icon');
@@ -462,7 +476,19 @@ async function inicializarApp() {
     if (AuthService) {
       usuario = await AuthService.verificarSessaoInicial();
     }
-    
+
+    // 4.b. Forçar refresh do token JWT para garantir que o Firestore
+    //      tenha credenciais válidas antes de iniciar os listeners.
+    //      Sem isso, ocorre race condition com enableMultiTabIndexedDbPersistence:
+    //      auth.currentUser existe, mas o token ainda não foi validado pelo Firestore.
+    if (usuario) {
+      try {
+        await usuario.getIdToken(true);
+      } catch (e) {
+        console.warn('[HM Finanças] Não foi possível atualizar o token de auth:', e.message);
+      }
+    }
+
     // 5. Renderizar o layout adequado
     if (usuario) {
       renderizarLayoutBase(usuario);

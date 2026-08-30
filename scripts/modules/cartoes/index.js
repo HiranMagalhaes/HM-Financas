@@ -95,6 +95,7 @@ async function criarCartao(evento) {
   const limiteTotal  = parseMoeda(formData.get('limiteTotal'));
   const valorUsado   = parseMoeda(formData.get('valorUsado')) || 0;
   const diaVencimento = parseInt(formData.get('diaVencimento'), 10);
+  const chavePix     = formData.get('chavePix') ? formData.get('chavePix').trim() : null;
 
   // Validações antes de enviar
   if (!nome) {
@@ -114,7 +115,7 @@ async function criarCartao(evento) {
     return;
   }
 
-  const novoCartao = { nome, limiteTotal, valorUsado, diaVencimento };
+  const novoCartao = { nome, limiteTotal, valorUsado, diaVencimento, chavePix };
 
   const btnSubmit = form.querySelector('button[type="submit"]');
   if (btnSubmit) btnSubmit.disabled = true;
@@ -147,6 +148,7 @@ function abrirModalEdicao(id) {
   document.getElementById('editar-cartao-nome').value        = cartao.nome;
   document.getElementById('editar-cartao-limite').value      = formatarMoeda(cartao.limiteTotal).replace('R$\u00a0', '').replace('R$ ', '');
   document.getElementById('editar-cartao-vencimento').value  = cartao.diaVencimento;
+  document.getElementById('editar-cartao-pix').value         = cartao.chavePix || '';
 
   abrirModal('modal-editar-cartao');
 }
@@ -166,6 +168,7 @@ async function atualizarCartao(evento) {
   const nome          = formData.get('nome').trim();
   const limiteTotal   = parseMoeda(formData.get('limiteTotal'));
   const diaVencimento = parseInt(formData.get('diaVencimento'), 10);
+  const chavePix      = formData.get('chavePix') ? formData.get('chavePix').trim() : null;
 
   if (!id || !nome) {
     mostrarToast({ tipo: 'warning', titulo: 'Campo obrigatório', mensagem: 'Informe o nome do cartão.' });
@@ -180,7 +183,7 @@ async function atualizarCartao(evento) {
   if (btnSubmit) btnSubmit.disabled = true;
 
   // Atualiza somente os campos editáveis — mantém valorUsado intacto
-  const res = await FirestoreService.atualizar('cartoes_lista', id, { nome, limiteTotal, diaVencimento });
+  const res = await FirestoreService.atualizar('cartoes_lista', id, { nome, limiteTotal, diaVencimento, chavePix });
 
   if (btnSubmit) btnSubmit.disabled = false;
 
@@ -808,6 +811,11 @@ function renderizarModais() {
                 Valor já gasto/em aberto no momento do cadastro. Deixe em branco se for zero.
               </small>
             </div>
+            <div class="form-group">
+              <label class="form-label" for="novo-cartao-pix">Chave PIX (Opcional)</label>
+              <input type="text" id="novo-cartao-pix" name="chavePix" class="form-input"
+                     placeholder="Chave associada a este cartão (para cobranças via HmCred)">
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-novo-cartao').classList.remove('open')">Cancelar</button>
@@ -848,6 +856,11 @@ function renderizarModais() {
                 <input type="number" id="editar-cartao-vencimento" name="diaVencimento" class="form-input"
                        min="1" max="31">
               </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="editar-cartao-pix">Chave PIX (Opcional)</label>
+              <input type="text" id="editar-cartao-pix" name="chavePix" class="form-input"
+                     placeholder="Chave associada a este cartão">
             </div>
             <div style="
               background-color: var(--color-warning-muted);

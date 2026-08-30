@@ -93,13 +93,23 @@ function formatarPercentual(valor, casasDecimais = 2) {
 
 /**
  * Formata uma data no padrão brasileiro DD/MM/AAAA.
+ * Strings no formato "AAAA-MM-DD" são tratadas como datas locais para evitar
+ * o deslocamento de fuso (UTC-3) que causaria exibição do dia anterior.
  *
  * @param {Date | string | number} data - Data a formatar
  * @returns {string} Ex: "23/07/2026"
  */
 function formatarData(data) {
   if (!data) return '—';
-  const d = new Date(data);
+  let d;
+  // Strings "AAAA-MM-DD" (sem hora) são interpretadas pelo JS como UTC midnight.
+  // No fuso UTC-3 (Brasília) isso resultaria no dia anterior. Parse manual corrige isso.
+  if (typeof data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    const [ano, mes, dia] = data.split('-').map(Number);
+    d = new Date(ano, mes - 1, dia);
+  } else {
+    d = new Date(data);
+  }
   if (isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat('pt-BR').format(d);
 }

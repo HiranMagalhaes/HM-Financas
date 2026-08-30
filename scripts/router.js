@@ -26,6 +26,7 @@ import { CartoesModule } from './modules/cartoes/index.js';
 import { PromissoriasModule } from './modules/promissorias/index.js';
 import { ClientesModule } from './modules/clientes/index.js';
 import { CobrancasModule } from './modules/cobrancas/index.js';
+import { RelatorioModule } from './modules/relatorio/index.js';
 import { NotificacoesModule } from './modules/notificacoes/index.js';
 import { ConfiguracoesModule } from './modules/configuracoes/index.js';
 import { AuthService } from './firebase/auth-service.js';
@@ -79,6 +80,12 @@ const ROTAS = {
     titulo: 'Cobranças',
     icone:  'request_quote',
     render: (container) => CobrancasModule?.renderCobrancas ? CobrancasModule.renderCobrancas(container) : renderEmConstrucao(container, 'cobrancas'),
+    privada: true,
+  },
+  relatorio: {
+    titulo: 'Relatório',
+    icone:  'bar_chart',
+    render: (container) => RelatorioModule?.renderRelatorio ? RelatorioModule.renderRelatorio(container) : renderEmConstrucao(container, 'relatorio'),
     privada: true,
   },
   notificacoes: {

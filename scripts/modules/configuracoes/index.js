@@ -12,6 +12,8 @@ import { mostrarToast } from '../../utils/helpers.js';
 import { Router } from '../../router.js';
 
 let preferenciasCarregadas = false;
+let estadoPix = { chaves: [] };
+let unsubscribePix = null;
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MÓDULO EXPORTADO
@@ -34,8 +36,26 @@ export const ConfiguracoesModule = {
         </div>
       </div>
 
-      <div class="cards-grid" style="grid-template-columns: 1fr; gap: 1.5rem; max-width: 800px;">
+      <div class="cards-grid" style="grid-template-columns: 1fr; gap: 1.5rem; max-width: 800px; margin-bottom: 2rem;">
         
+        <!-- CHAVES PIX -->
+        <div class="card">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="card-title">Minhas Chaves PIX</h3>
+            <button class="btn btn-primary btn-sm" id="btn-novo-pix">
+              <span class="material-symbols-outlined icon-sm">add</span> Nova
+            </button>
+          </div>
+          <div class="card-body">
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
+              Cadastre suas chaves para enviar rapidamente junto com as mensagens de cobrança.
+            </p>
+            <div id="lista-chaves-pix" style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <!-- Preenchido via JS -->
+            </div>
+          </div>
+        </div>
+
         <!-- DADOS DA CONTA -->
         <div class="card">
           <div class="card-header">
@@ -139,6 +159,34 @@ export const ConfiguracoesModule = {
         </div>
 
       </div>
+
+      <!-- Modal Novo PIX -->
+      <div class="modal-overlay" id="modal-novo-pix">
+        <div class="modal" style="max-width: 400px; width: 100%;">
+          <div class="modal-header">
+            <h3 class="modal-title">Nova Chave PIX</h3>
+            <button type="button" class="btn btn-ghost btn-icon" onclick="document.getElementById('modal-novo-pix').classList.remove('open')">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          <form id="form-novo-pix">
+            <div class="modal-body">
+              <div class="form-group">
+                <label class="form-label">Apelido <span class="required">*</span></label>
+                <input type="text" name="apelido" class="form-input" placeholder="Ex: Nubank, Inter, Bradesco..." required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Chave PIX <span class="required">*</span></label>
+                <input type="text" name="chave" class="form-input" placeholder="CPF, Telefone, E-mail ou Aleatória" required>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-novo-pix').classList.remove('open')">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
     `;
 
     // 1. Carregar preferências do estado atual do DOM/LocalStorage
@@ -180,8 +228,41 @@ export const ConfiguracoesModule = {
 
     preferenciasCarregadas = true;
 
+    // Escutar coleção de PIX
+    if (unsubscribePix) { unsubscribePix(); unsubscribePix = null; }
+    unsubscribePix = FirestoreService.escutar(
+      'pix_chaves',
+      (chaves) => {
+        estadoPix.chaves = chaves;
+        this._renderizarListaPix(container);
+      },
+      { ordenarPor: 'apelido', direcao: 'asc' }
+    );
+
     // 2. Registrar Eventos
     this._registrarEventos(container, usuario);
+  },
+
+  _renderizarListaPix(container) {
+    const lista = container.querySelector('#lista-chaves-pix');
+    if (!lista) return;
+
+    if (estadoPix.chaves.length === 0) {
+      lista.innerHTML = `<div style="text-align: center; padding: 1rem; color: var(--text-muted); background: var(--bg-overlay); border-radius: var(--radius-md);">Nenhuma chave PIX cadastrada.</div>`;
+      return;
+    }
+
+    lista.innerHTML = estadoPix.chaves.map(pix => `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-overlay); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
+        <div>
+          <div style="font-weight: var(--font-medium); color: var(--text-primary);">${pix.apelido}</div>
+          <div style="font-size: var(--text-sm); color: var(--text-muted);">${pix.chave}</div>
+        </div>
+        <button class="btn btn-ghost btn-icon btn-excluir-pix" data-id="${pix.id}" title="Excluir">
+          <span class="material-symbols-outlined" style="color: var(--color-danger);">delete</span>
+        </button>
+      </div>
+    `).join('');
   },
 
   /**
@@ -189,6 +270,62 @@ export const ConfiguracoesModule = {
    */
   _registrarEventos(container, usuario) {
     
+    // -- PIX --
+    const btnNovoPix = container.querySelector('#btn-novo-pix');
+    const modalNovoPix = container.querySelector('#modal-novo-pix');
+    const formNovoPix = container.querySelector('#form-novo-pix');
+
+    if (btnNovoPix) {
+      btnNovoPix.addEventListener('click', () => {
+        modalNovoPix.classList.add('open');
+      });
+    }
+
+    if (formNovoPix) {
+      formNovoPix.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(formNovoPix);
+        const btnSubmit = formNovoPix.querySelector('button[type="submit"]');
+        
+        const novaChave = {
+          apelido: formData.get('apelido').trim(),
+          chave: formData.get('chave').trim()
+        };
+
+        if (!novaChave.apelido || !novaChave.chave) return;
+
+        btnSubmit.disabled = true;
+        const res = await FirestoreService.criar('pix_chaves', novaChave);
+        btnSubmit.disabled = false;
+
+        if (res.sucesso) {
+          modalNovoPix.classList.remove('open');
+          formNovoPix.reset();
+          mostrarToast({ tipo: 'success', titulo: 'Chave salva com sucesso!' });
+        } else {
+          mostrarToast({ tipo: 'danger', titulo: 'Erro ao salvar chave PIX.' });
+        }
+      });
+    }
+
+    if (!container.dataset.eventosRegistradosConfiguracoes) {
+      container.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.btn-excluir-pix');
+        if (btn) {
+          const id = btn.getAttribute('data-id');
+          if (confirm('Deseja realmente excluir esta chave PIX?')) {
+            const res = await FirestoreService.excluir('pix_chaves', id);
+            if (res.sucesso) {
+              mostrarToast({ tipo: 'success', titulo: 'Chave excluída.' });
+            } else {
+              mostrarToast({ tipo: 'danger', titulo: 'Erro ao excluir.' });
+            }
+          }
+        }
+      });
+      container.dataset.eventosRegistradosConfiguracoes = 'true';
+    }
+
     // -- Dados da Conta --
     const formPerfil = container.querySelector('#form-perfil');
     const btnRecuperar = container.querySelector('#btn-recuperar-senha');
