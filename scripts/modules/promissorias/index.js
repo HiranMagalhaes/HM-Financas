@@ -1818,4 +1818,4 @@ export function inicializar(containerCentral) {
 }
 
 // Exportação auxiliar para uso em outros módulos (ex: Notificações)
-
+export { obterInfoPendencia };
