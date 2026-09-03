@@ -11,6 +11,7 @@ import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
 import { mostrarToast, calcularStatusVencimento, escapeHTML } from '../../utils/helpers.js';
 import { criarHTMLBarraFiltros, registrarEventosFiltros, filtrarLista } from '../../utils/filtros.js';
+import { obterInfoPendencia } from '../promissorias/index.js';
 
 let estado = {
   cobrancas: [],
@@ -218,10 +219,9 @@ function gerarAlertas() {
   estado.promissorias.forEach(prom => {
     if (prom.status === 'pago' || prom.status === 'recebida') return;
 
-    // Modalidade com cronograma de parcelas (amortizacao / juros_mensais)
-    if (prom.cronograma && prom.cronograma.length > 0) {
+    if (prom.modalidade === 'amortizacao' && prom.cronograma && prom.cronograma.length > 0) {
       prom.cronograma.forEach((parc, idx) => {
-        if (parc.pago || !parc.vencimento) return; // pula parcelas sem data
+        if (parc.pago || !parc.vencimento) return;
         const statusReal = calcularStatusVencimento(parc.vencimento, 'pendente');
         if (statusReal === 'atrasada' || statusReal === 'hoje' || statusReal === 'amanha') {
           alertas.push({
@@ -229,31 +229,35 @@ function gerarAlertas() {
             modulo: 'Promissória',
             clienteId: prom.clienteId,
             clienteNome: prom.clienteNome || 'Desconhecido',
-            descricao: `Promissória - ${prom.modalidade === 'juros_mensais' ? 'Juros Mês' : 'Parcela'} ${idx+1}`,
+            descricao: `Promissória - Parcela ${idx+1}`,
             valor: parc.valorParcela || parc.juros || 0,
             dataVencimento: parc.vencimento,
             statusReal: statusReal,
             chavePix: null,
-            icone: 'description'
+            icone: 'description',
+            valorCheio: (prom.capitalRestante || prom.valorInvestido || 0) + (prom.lucro || 0),
+            isPromissoria: true
           });
         }
       });
     } else {
-      // Modalidade pagamento único (sem cronograma) — usa dataVencimento raiz
-      const statusReal = calcularStatusVencimento(prom.dataVencimento, prom.status);
-      if (statusReal === 'atrasada' || statusReal === 'hoje' || statusReal === 'amanha') {
-        const valorTotal = (prom.valorInvestido || 0) + (prom.lucro || 0);
+      // juros_mensais ou unico
+      const info = obterInfoPendencia(prom);
+      if (info.statusReal === 'atrasada' || info.statusReal === 'hoje' || info.statusReal === 'amanha') {
+        const valorCheio = (prom.capitalRestante || prom.valorInvestido || 0) + (prom.lucro || 0);
         alertas.push({
           id: prom.id,
           modulo: 'Promissória',
           clienteId: prom.clienteId,
           clienteNome: prom.clienteNome || 'Desconhecido',
-          descricao: prom.descricao || 'Promissória - Pagamento Único',
-          valor: valorTotal,
-          dataVencimento: prom.dataVencimento,
-          statusReal: statusReal,
+          descricao: prom.modalidade === 'juros_mensais' ? 'Promissória - Juros Mensal' : (prom.descricao || 'Promissória - Pagamento Único'),
+          valor: info.valorPendente,
+          dataVencimento: info.dataVencimentoReal,
+          statusReal: info.statusReal,
           chavePix: null,
-          icone: 'description'
+          icone: 'description',
+          valorCheio: valorCheio,
+          isPromissoria: true
         });
       }
     }
@@ -488,7 +492,15 @@ function renderListaAlertas(container) {
             </p>
           </div>
 
-          <div style="display: flex; gap: var(--space-2); align-items: center;">
+          <div style="display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+            ${a.isPromissoria && a.valorCheio ? `
+              <details style="font-size: var(--text-xs); color: var(--text-muted); cursor: pointer; margin-right: var(--space-4);">
+                <summary style="outline: none;">Ver detalhes</summary>
+                <div style="margin-top: 4px; padding: 4px 8px; background: var(--bg-overlay); border-radius: var(--radius-sm);">
+                  Valor Cheio (Capital + Juros): <strong class="value-sensitive">${formatarMoeda(a.valorCheio)}</strong>
+                </div>
+              </details>
+            ` : ''}
             <button class="btn btn-success btn-sm" data-acao="alerta-whatsapp" data-id="${a.id}" style="display:flex; align-items:center; gap:4px;">
               <span class="material-symbols-outlined icon-sm">chat</span> Cobrar
             </button>

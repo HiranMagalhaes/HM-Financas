@@ -19,6 +19,7 @@ import { AuthService }      from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
 import { mostrarToast, calcularStatusVencimento, escapeHTML } from '../../utils/helpers.js';
+import { injetarModalEdicaoPromissoria, abrirModalEdicaoPromissoria } from './editar.js';
 import { criarHTMLBarraFiltros, registrarEventosFiltros, filtrarLista } from '../../utils/filtros.js';
 
 let estado = {
@@ -1100,12 +1101,18 @@ function renderizarCardPromissoria(p) {
         ${botoesAcao ? `
           <div style="display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border-default); justify-content: flex-end;">
             ${botoesAcao}
+            <button class="btn btn-ghost btn-icon" title="Editar" data-acao="editar" data-id="${p.id}">
+              <span class="material-symbols-outlined" style="color: var(--color-info);">edit</span>
+            </button>
             <button class="btn btn-ghost btn-icon" title="Excluir" data-acao="excluir" data-id="${p.id}" data-cliente="${p.clienteId}">
               <span class="material-symbols-outlined" style="color: var(--color-danger);">delete</span>
             </button>
           </div>
         ` : `
           <div style="display: flex; justify-content: flex-end; margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-default);">
+            <button class="btn btn-ghost btn-icon" title="Editar" data-acao="editar" data-id="${p.id}">
+              <span class="material-symbols-outlined" style="color: var(--color-info);">edit</span>
+            </button>
             <button class="btn btn-ghost btn-icon" title="Excluir" data-acao="excluir" data-id="${p.id}" data-cliente="${p.clienteId}">
               <span class="material-symbols-outlined" style="color: var(--color-danger);">delete</span>
             </button>
@@ -1500,8 +1507,22 @@ function renderizarTelaPrincipal(container) {
 
 function registrarEventosTela(container) {
   const btnNova = document.getElementById('btn-nova-promissoria');
-  if (btnNova) btnNova.addEventListener('click', () => abrirModal('modal-nova-promissoria'));
-
+  if (btnNova) {
+    btnNova.addEventListener('click', () => {
+      const hoje = new Date();
+      hoje.setDate(hoje.getDate() + 30);
+      const strAno = hoje.getFullYear();
+      const strMes = String(hoje.getMonth() + 1).padStart(2, '0');
+      const strDia = String(hoje.getDate()).padStart(2, '0');
+      
+      const inputVencimento = document.getElementById('nova-prom-vencimento');
+      if (inputVencimento) {
+        inputVencimento.value = `${strAno}-${strMes}-${strDia}`;
+      }
+      
+      abrirModal('modal-nova-promissoria');
+    });
+  }
   const formNova = document.getElementById('form-nova-promissoria');
   if (formNova) formNova.addEventListener('submit', criarPromissoria);
 
@@ -1695,6 +1716,7 @@ function registrarEventosTela(container) {
         else if (acao === 'quitar-capital')    quitarCapitalJurosMensais(id, clienteId);
         else if (acao === 'cobrar-wa')         abrirModalWaPromissoria(id);
         else if (acao === 'excluir')           excluirPromissoria(id, clienteId);
+        else if (acao === 'editar')            abrirModalEdicaoPromissoria(id, estado);
 
         e.stopPropagation();
       }
@@ -1789,6 +1811,11 @@ export const PromissoriasModule = {
   }
 };
 
+export function inicializar(containerCentral) {
+  injetarModalEdicaoPromissoria(estado);
+  renderizarTelaPrincipal(containerCentral);
+  registrarEventosTela(containerCentral);
+}
+
 // Exportação auxiliar para uso em outros módulos (ex: Notificações)
-export { obterInfoPendencia };
 

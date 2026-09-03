@@ -16,6 +16,7 @@ import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
 import { mostrarToast, gerarIdUnico, escapeHTML } from '../../utils/helpers.js';
+import { injetarModalEdicaoHmCred, abrirModalEdicaoHmCred } from './editar.js';
 import { criarHTMLBarraFiltros, registrarEventosFiltros, filtrarLista } from '../../utils/filtros.js';
 import { Router } from '../../router.js';
 
@@ -181,8 +182,9 @@ async function criarOperacao(evento) {
     }
 
     // Gera parcelas usando o diaVencimento do cartão (não a data de concessão)
-    const diaVenc = cartao.diaVencimento || new Date().getDate();
-    const parcelasGeradas = gerarListaParcelasCartao(diaVenc, parcelas, valorParcela);
+    const diaVenc = parseInt(cartao.diaVencimento, 10) || new Date().getDate();
+    const dataConcessao = formData.get('dataConcessao');
+    const parcelasGeradas = gerarListaParcelasCartao(diaVenc, parcelas, valorParcela, dataConcessao);
 
     novaOperacao = {
       destino: formData.get('destino'),
@@ -321,17 +323,21 @@ function gerarListaParcelas(dataInicial, totalParcelas, valorPorParcela) {
  * Gera parcelas para retirada via cartão, usando o diaVencimento do cartão.
  * A 1ª parcela vence no próximo mês (no dia de vencimento do cartão).
  */
-function gerarListaParcelasCartao(diaVencimento, totalParcelas, valorPorParcela) {
+function gerarListaParcelasCartao(diaVencimento, totalParcelas, valorPorParcela, dataConcessao) {
   const parcelas = [];
-  const hoje = new Date();
+  const baseDate = dataConcessao ? new Date(dataConcessao + 'T12:00:00') : new Date();
 
   for (let i = 1; i <= totalParcelas; i++) {
-    const venc = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento);
+    const venc = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, diaVencimento);
+    const strAno = venc.getFullYear();
+    const strMes = String(venc.getMonth() + 1).padStart(2, '0');
+    const strDia = String(venc.getDate()).padStart(2, '0');
+
     parcelas.push({
       id: gerarIdUnico() + '_' + i,
       numero: i,
       valor: valorPorParcela,
-      vencimento: venc.toISOString().split('T')[0],
+      vencimento: `${strAno}-${strMes}-${strDia}`,
       pago: false
     });
   }
@@ -739,6 +745,9 @@ function renderizarLinhaOperacao(op) {
             <span class="material-symbols-outlined">payments</span>
           </button>
         ` : ''}
+        <button class="btn btn-ghost btn-icon text-info" title="Editar operação" data-acao="editar" data-id="${op.id}">
+          <span class="material-symbols-outlined">edit</span>
+        </button>
         <button class="btn btn-ghost btn-icon text-danger" title="Excluir operação" data-acao="excluir" data-id="${op.id}">
           <span class="material-symbols-outlined">delete</span>
         </button>
@@ -827,7 +836,7 @@ function agruparOperacoesPorDestino(operacoes) {
 }
 
 /**
- * Gera o HTML da linha de cabeçalho de um grupo de operações.
+ * Gera the HTML da linha de cabeçalho de um grupo de operações.
  *
  * @param {object} grupo - Grupo retornado por agruparOperacoesPorDestino
  * @returns {string} HTML da linha de cabeçalho
@@ -1086,14 +1095,16 @@ function renderizarTelaPrincipal(container) {
   container.querySelectorAll('[data-acao]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const acao = btn.getAttribute('data-acao');
-      const idOperacao = btn.getAttribute('data-id') || btn.getAttribute('data-id-op');
+      const id = btn.getAttribute('data-id') || btn.getAttribute('data-id-op');
       if (acao === 'excluir') {
-        excluirOperacao(idOperacao);
+        excluirOperacao(id);
       } else if (acao === 'pagar') {
-        marcarComoPaga(idOperacao);
+        marcarComoPaga(id);
       } else if (acao === 'pagar-parcela') {
-        const idParcela = btn.getAttribute('data-id-parc');
-        pagarParcela(idOperacao, idParcela);
+        const idParc = btn.getAttribute('data-id-parc');
+        pagarParcela(id, idParc);
+      } else if (acao === 'editar') {
+        abrirModalEdicaoHmCred(id, estado);
       }
     });
   });
@@ -1136,6 +1147,9 @@ export const HmcredModule = {
 
     // Carregar configurações iniciais (uma única vez)
     const resConfig = await FirestoreService.obter('hmcred', 'configuracao');
+    
+    injetarModalEdicaoHmCred(estado);
+    
     if (resConfig.sucesso) {
       estado.configuracao = resConfig.dados;
     }

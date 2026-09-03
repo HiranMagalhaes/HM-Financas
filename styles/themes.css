@@ -71,15 +71,23 @@
 
 /* ─── PRINT — estilos mínimos de impressão ───────────────────────────────── */
 @media print {
+  body, html {
+    background: #fff;
+    color: #000;
+    height: auto;
+    overflow: visible;
+  }
+  
   body * {
     visibility: hidden;
   }
   
-  .contrato-impressao, .contrato-impressao * {
+  .contrato-impressao, .contrato-impressao *,
+  .relatorio-impressao, .relatorio-impressao * {
     visibility: visible;
   }
   
-  .contrato-impressao {
+  .contrato-impressao, .relatorio-impressao {
     position: absolute;
     left: 0;
     top: 0;
@@ -87,17 +95,16 @@
     padding: 0 !important;
     margin: 0 !important;
     border: none !important;
+    background: #fff !important;
+    color: #000 !important;
   }
   
+  /* Esconder elementos desnecessários da UI */
   .sidebar,
   .app-header,
   .btn,
-  .toast-container {
+  .toast-container,
+  .page-header {
     display: none !important;
-  }
-
-  body {
-    background: #fff;
-    color: #000;
   }
 }

@@ -15,6 +15,7 @@ import { AuthService }      from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData } from '../../utils/formatters.js';
 import { escapeHTML } from '../../utils/helpers.js';
+import { renderizarRelatorioDetalhado } from './detalhado.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ESTADO DO MÓDULO
@@ -647,12 +648,16 @@ function renderizarTelaPrincipal(container) {
     </div>
 
     <!-- Abas -->
-    <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-6); background: var(--bg-overlay); padding: 4px; border-radius: var(--radius-md); max-width: 440px;">
-      <button id="tab-comparativo" class="btn ${estado.abaAtiva === 'comparativo' ? 'btn-primary' : 'btn-ghost'}" style="flex:1;">
+    <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-6); background: var(--bg-overlay); padding: 4px; border-radius: var(--radius-md); max-width: 600px; flex-wrap: wrap;">
+      <button id="tab-comparativo" class="btn ${estado.abaAtiva === 'comparativo' ? 'btn-primary' : 'btn-ghost'}" style="flex:1; min-width: 140px;">
         <span class="material-symbols-outlined icon-sm">bar_chart</span>
         Comparativo
       </button>
-      <button id="tab-contrato" class="btn ${estado.abaAtiva === 'contrato' ? 'btn-primary' : 'btn-ghost'}" style="flex:1;">
+      <button id="tab-devedores" class="btn ${estado.abaAtiva === 'devedores' ? 'btn-primary' : 'btn-ghost'}" style="flex:1; min-width: 140px;">
+        <span class="material-symbols-outlined icon-sm">group</span>
+        Devedores
+      </button>
+      <button id="tab-contrato" class="btn ${estado.abaAtiva === 'contrato' ? 'btn-primary' : 'btn-ghost'}" style="flex:1; min-width: 140px;">
         <span class="material-symbols-outlined icon-sm">description</span>
         Contrato
       </button>
@@ -668,6 +673,8 @@ function renderizarTelaPrincipal(container) {
   const renderizarAbaAtiva = () => {
     if (estado.abaAtiva === 'comparativo') {
       renderizarComparativo(abaConteudo, 6);
+    } else if (estado.abaAtiva === 'devedores') {
+      renderizarRelatorioDetalhado(abaConteudo, estado);
     } else {
       renderizarContrato(abaConteudo);
     }
@@ -679,13 +686,23 @@ function renderizarTelaPrincipal(container) {
   container.querySelector('#tab-comparativo')?.addEventListener('click', () => {
     estado.abaAtiva = 'comparativo';
     container.querySelector('#tab-comparativo').className = 'btn btn-primary';
+    container.querySelector('#tab-devedores').className = 'btn btn-ghost';
     container.querySelector('#tab-contrato').className = 'btn btn-ghost';
     renderizarComparativo(abaConteudo, 6);
+  });
+
+  container.querySelector('#tab-devedores')?.addEventListener('click', () => {
+    estado.abaAtiva = 'devedores';
+    container.querySelector('#tab-comparativo').className = 'btn btn-ghost';
+    container.querySelector('#tab-devedores').className = 'btn btn-primary';
+    container.querySelector('#tab-contrato').className = 'btn btn-ghost';
+    renderizarRelatorioDetalhado(abaConteudo, estado);
   });
 
   container.querySelector('#tab-contrato')?.addEventListener('click', () => {
     estado.abaAtiva = 'contrato';
     container.querySelector('#tab-comparativo').className = 'btn btn-ghost';
+    container.querySelector('#tab-devedores').className = 'btn btn-ghost';
     container.querySelector('#tab-contrato').className = 'btn btn-primary';
     renderizarContrato(abaConteudo);
   });
