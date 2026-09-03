@@ -4,7 +4,7 @@
  * Implementa cache básico e a estratégia "Network First" (Tentar a rede, cair pro cache se offline).
  */
 
-const CACHE_NAME = 'hm-financas-cache-v1';
+const CACHE_NAME = 'hm-financas-cache-v2';
 
 // Arquivos principais que compõem o App Shell (interface estática básica).
 // Não cacheamos as chamadas para o Firebase, pois queremos que os dados reais
