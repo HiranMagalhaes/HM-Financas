@@ -1781,6 +1781,8 @@ export const PromissoriasModule = {
       </div>
     `;
 
+    injetarModalEdicaoPromissoria(estado);
+
     if (unsubscribePromissorias) { unsubscribePromissorias(); unsubscribePromissorias = null; }
     if (unsubscribeClientes)     { unsubscribeClientes();     unsubscribeClientes = null; }
     if (unsubscribeDinheiro)     { unsubscribeDinheiro();     unsubscribeDinheiro = null; }

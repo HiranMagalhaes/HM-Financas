@@ -243,8 +243,9 @@ function gerarAlertas() {
     } else {
       // juros_mensais ou unico
       const info = obterInfoPendencia(prom);
-      if (info.statusReal === 'atrasada' || info.statusReal === 'hoje' || info.statusReal === 'amanha') {
+      if (info.statusReal === 'atrasada' || info.statusReal === 'hoje' || info.statusReal === 'amanha' || info.statusReal === 'juros_vencido' || info.statusReal === 'juros_vence_hoje') {
         const valorCheio = (prom.capitalRestante || prom.valorInvestido || 0) + (prom.lucro || 0);
+        const stRealCorrigido = (info.statusReal === 'juros_vencido') ? 'atrasada' : (info.statusReal === 'juros_vence_hoje') ? 'hoje' : info.statusReal;
         alertas.push({
           id: prom.id,
           modulo: 'Promissória',
@@ -253,7 +254,7 @@ function gerarAlertas() {
           descricao: prom.modalidade === 'juros_mensais' ? 'Promissória - Juros Mensal' : (prom.descricao || 'Promissória - Pagamento Único'),
           valor: info.valorPendente,
           dataVencimento: info.dataVencimentoReal,
-          statusReal: info.statusReal,
+          statusReal: stRealCorrigido,
           chavePix: null,
           icone: 'description',
           valorCheio: valorCheio,

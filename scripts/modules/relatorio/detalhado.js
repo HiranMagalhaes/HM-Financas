@@ -81,7 +81,7 @@ export function renderizarRelatorioDetalhado(container, estado) {
     });
 
     // HmCred
-    estado.hmcred.forEach(op => {
+    (estado.operacoes || []).forEach(op => {
       if (op.status === 'pago' || !op.listaParcelas) return;
       op.listaParcelas.forEach((parc, idx) => {
         if (parc.pago || !parc.vencimento) return;
