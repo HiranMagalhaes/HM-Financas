@@ -9,7 +9,8 @@
 import { AuthService }      from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData } from '../../utils/formatters.js';
-import { mostrarToast }     from '../../utils/helpers.js';
+import { mostrarToast, escapeHTML } from '../../utils/helpers.js';
+import { criarHTMLBarraFiltros, registrarEventosFiltros, filtrarLista } from '../../utils/filtros.js';
 
 let estado = {
   clientes: [],
@@ -243,14 +244,14 @@ function abrirDetalhesCliente(id) {
         return `
           <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-bottom: 1px solid var(--border-default);">
             <div>
-              <p style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary);">${cob.descricao || 'Cobrança'}</p>
+              <p style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary);">${escapeHTML(cob.descricao) || 'Cobrança'}</p>
               <p style="font-size: var(--text-xs); color: var(--text-muted);">Venc: ${formatarData(cob.dataVencimento)}</p>
             </div>
             <div style="text-align: right;">
               <p class="value-sensitive" style="font-size: var(--text-sm); font-weight: var(--font-bold); color: var(--text-primary);">${formatarMoeda(cob.valor)}</p>
               <p class="${statusCor}" style="font-size: var(--text-xs); display: flex; align-items: center; gap: 4px; justify-content: flex-end;">
                 <span class="material-symbols-outlined icon-sm">${statusIcon}</span>
-                ${cob.status.toUpperCase()}
+                ${escapeHTML(cob.status).toUpperCase()}
               </p>
             </div>
           </div>
@@ -269,7 +270,7 @@ function abrirDetalhesCliente(id) {
         return `
           <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-bottom: 1px solid var(--border-default);">
             <div>
-              <p style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary);">${p.descricao || 'Promissória'}</p>
+              <p style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary);">${escapeHTML(p.descricao) || 'Promissória'}</p>
               <p style="font-size: var(--text-xs); color: var(--text-muted);">Venc: ${formatarData(p.dataVencimento)} &bull; ${modLabel}</p>
             </div>
             <div style="text-align: right;">
@@ -305,15 +306,15 @@ function fecharModal(id) {
 
 function renderizarCardCliente(cliente) {
   return `
-    <div class="card" style="margin-bottom: var(--space-4);" role="article" aria-label="Cliente: ${cliente.nome}">
+    <div class="card" style="margin-bottom: var(--space-4);" role="article" aria-label="Cliente: ${escapeHTML(cliente.nome)}">
       <div class="card-body" style="display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);">
         <div style="display: flex; align-items: center; gap: var(--space-4); cursor: pointer; flex: 1;" data-acao="detalhes" data-id="${cliente.id}">
           <div style="width: 48px; height: 48px; border-radius: 50%; background-color: var(--bg-overlay); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
             <span class="material-symbols-outlined" style="font-size: 24px;">person</span>
           </div>
           <div>
-            <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${cliente.nome}</h4>
-            <span style="font-size: var(--text-sm); color: var(--text-muted);">${cliente.telefone || 'Sem telefone'}</span>
+            <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${escapeHTML(cliente.nome)}</h4>
+            <span style="font-size: var(--text-sm); color: var(--text-muted);">${escapeHTML(cliente.telefone) || 'Sem telefone'}</span>
           </div>
         </div>
 
@@ -471,11 +472,17 @@ function renderizarModais() {
   `;
 }
 
-function atualizarLista(container) {
-  const inputBusca = container.querySelector('#busca-cliente');
-  const termo = inputBusca ? inputBusca.value.toLowerCase() : '';
+function atualizarLista(container, filtros = {}) {
+  const { termo = '', dataInicio = null, dataFim = null } = filtros;
   
-  const clientesFiltrados = estado.clientes.filter(c => c.nome.toLowerCase().includes(termo));
+  const clientesFiltrados = filtrarLista(estado.clientes, {
+    campoTexto: 'nome',
+    termo,
+    // Clientes não têm campo de data fácil; aplicamos apenas o filtro de nome
+    campoData: '',
+    dataInicio,
+    dataFim,
+  });
   
   const listaContainer = container.querySelector('#clientes-lista');
   if (listaContainer) {
@@ -526,10 +533,10 @@ function renderizarTelaPrincipal(container) {
       </div>
     </div>
 
-    <div class="dashboard-section-header" style="margin-bottom: var(--space-4); display: flex; justify-content: space-between; align-items: center;">
+    <div class="dashboard-section-header" style="margin-bottom: var(--space-4);">
       <h3 class="text-lg font-semibold">Meus Clientes</h3>
-      <input type="text" id="busca-cliente" class="form-input" placeholder="Buscar por nome..." style="max-width: 250px;">
     </div>
+    ${criarHTMLBarraFiltros({ prefixo: 'clientes', labelBusca: 'Buscar por nome...' })}
 
     <div id="clientes-lista">
       <!-- Lista injetada dinamicamente -->
@@ -552,8 +559,10 @@ function registrarEventosTela(container) {
   const formEditar = document.getElementById('form-editar-cliente');
   if (formEditar) formEditar.addEventListener('submit', atualizarCliente);
   
-  const inputBusca = document.getElementById('busca-cliente');
-  if (inputBusca) inputBusca.addEventListener('input', () => atualizarLista(container));
+  registrarEventosFiltros(container, {
+    prefixo: 'clientes',
+    onFiltrar: (filtros) => atualizarLista(container, filtros)
+  });
 
   if (!container.dataset.eventosRegistradosClientes) {
     container.addEventListener('click', (e) => {

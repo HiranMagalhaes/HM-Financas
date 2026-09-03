@@ -27,6 +27,7 @@
 import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, formatarDataRelativa } from '../../utils/formatters.js';
+import { escapeHTML } from '../../utils/helpers.js';
 import { NotificacoesModule } from '../notificacoes/index.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ function gerarItemMovimentacao(tx) {
           <span class="material-symbols-outlined">${icone}</span>
         </div>
         <div>
-          <p class="tx-desc">${tx.descricao}</p>
+          <p class="tx-desc">${escapeHTML(tx.descricao)}</p>
           <p class="tx-date">${formatarData(tx.data)}</p>
         </div>
       </div>

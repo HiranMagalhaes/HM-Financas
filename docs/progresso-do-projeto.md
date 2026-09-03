@@ -9,11 +9,19 @@
 
 | Campo | Valor |
 |---|---|
-| **Módulo Atual** | Módulo 12 — Deploy (Firebase Hosting) |
-| **Status** | 🎉 PROJETO CONCLUÍDO! Todos os módulos finalizados com sucesso! |
-| **Última Atualização** | Módulo 12 concluído com arquivos de configuração de host na raiz (`firebase.json`). |
+| **Módulo Atual** | Ajustes e Melhorias Contínuas |
+| **Status** | 5 itens de melhoria aplicados com sucesso! |
+| **Última Atualização** | Segurança XSS, Notificações, Agrupamentos, Filtros Reutilizáveis e Tela de Relatórios. |
 
 ## Histórico de Implementação
+
+### ✅ Manutenção — Setembro 2026
+- [x] **Segurança (XSS):** Função `escapeHTML` aplicada em templates literais que exibem dados livres (Clientes, Cobranças, HMCRED, Promissórias, Cartões, Notificações, Dashboard, Configurações).
+- [x] **Bug Notifications:** Correção do valor exibido em notificações para Promissórias usando a nova função `obterInfoPendencia`.
+- [x] **Agrupamentos:** Operações HMCRED agrupadas por Destino; Compras Cartões agrupadas por Categoria.
+- [x] **Filtros Reutilizáveis:** Helper de filtro `utils/filtros.js` criado e aplicado com input unificado (nome/descrição e data de vencimento/concessão) nas 4 telas principais.
+- [x] **Relatórios:** Tela inteiramente reconstruída com gráfico SVG nativo, tabela comparativa, lista de clientes recorrentes em atraso e gerador de Contratos impresso via `window.print()`.
+
 
 ### ✅ Etapa 0: Setup Inicial
 - [x] Estrutura de pastas do front-end vanilla criada.

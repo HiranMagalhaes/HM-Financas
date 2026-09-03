@@ -9,7 +9,8 @@
 import { AuthService }      from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
-import { mostrarToast, calcularStatusVencimento } from '../../utils/helpers.js';
+import { mostrarToast, calcularStatusVencimento, escapeHTML } from '../../utils/helpers.js';
+import { criarHTMLBarraFiltros, registrarEventosFiltros, filtrarLista } from '../../utils/filtros.js';
 
 let estado = {
   cobrancas: [],
@@ -475,8 +476,8 @@ function renderListaAlertas(container) {
               <span class="material-symbols-outlined">${a.icone}</span>
             </div>
             <div>
-              <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold);">${a.clienteNome}</h4>
-              <span style="font-size: var(--text-sm); color: var(--text-muted);">${a.descricao}</span>
+              <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold);">${escapeHTML(a.clienteNome)}</h4>
+              <span style="font-size: var(--text-sm); color: var(--text-muted);">${escapeHTML(a.descricao)}</span>
             </div>
           </div>
 
@@ -504,11 +505,29 @@ function renderListaAlertas(container) {
 function renderListaGerenciar(container) {
   let cobrancasFiltradas = estado.cobrancas;
 
+  // Filtro de status (aba)
   if (estado.filtroStatus !== 'todas') {
     cobrancasFiltradas = cobrancasFiltradas.filter(c => {
       const statusReal = obterStatusReal(c);
       if (estado.filtroStatus === 'aberto') return statusReal === 'pendente' || statusReal === 'hoje' || statusReal === 'amanha';
       return statusReal === estado.filtroStatus;
+    });
+  }
+
+  // Filtro de texto e data (barra de filtros)
+  const inputBusca  = container.querySelector('#cobrancas-busca');
+  const inputInicio = container.querySelector('#cobrancas-data-inicio');
+  const inputFim    = container.querySelector('#cobrancas-data-fim');
+  if (inputBusca || inputInicio || inputFim) {
+    const termo     = inputBusca?.value.trim().toLowerCase() || '';
+    const dataInicio = inputInicio?.value || null;
+    const dataFim    = inputFim?.value    || null;
+    cobrancasFiltradas = filtrarLista(cobrancasFiltradas, {
+      campoTexto: 'clienteNome',
+      termo,
+      campoData: 'dataVencimento',
+      dataInicio,
+      dataFim,
     });
   }
 
@@ -557,8 +576,8 @@ function renderListaGerenciar(container) {
                   <span class="material-symbols-outlined" style="font-size: 24px;">${statusIcon}</span>
                 </div>
                 <div>
-                  <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${nomeCliente}</h4>
-                  <span style="font-size: var(--text-sm); color: var(--text-muted);">${cobranca.descricao || 'Sem descrição'}</span>
+                  <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${escapeHTML(nomeCliente)}</h4>
+                  <span style="font-size: var(--text-sm); color: var(--text-muted);">${escapeHTML(cobranca.descricao) || 'Sem descrição'}</span>
                 </div>
               </div>
 
@@ -763,6 +782,8 @@ function renderizarTelaPrincipal(container) {
         </div>
       </div>
 
+      ${criarHTMLBarraFiltros({ prefixo: 'cobrancas', labelBusca: 'Buscar por cliente ou descrição...' })}
+
       <div id="cobrancas-lista">
         <!-- Lista injetada dinamicamente -->
       </div>
@@ -790,6 +811,11 @@ function registrarEventosTela(container) {
   
   const tabGerenciar = document.getElementById('tab-gerenciar');
   if (tabGerenciar) tabGerenciar.addEventListener('click', () => selecionarAba('gerenciar'));
+
+  registrarEventosFiltros(container, {
+    prefixo: 'cobrancas',
+    onFiltrar: () => atualizarListas()
+  });
 
   container.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {

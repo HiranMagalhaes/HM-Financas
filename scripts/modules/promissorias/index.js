@@ -18,7 +18,8 @@
 import { AuthService }      from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
-import { mostrarToast, calcularStatusVencimento } from '../../utils/helpers.js';
+import { mostrarToast, calcularStatusVencimento, escapeHTML } from '../../utils/helpers.js';
+import { criarHTMLBarraFiltros, registrarEventosFiltros, filtrarLista } from '../../utils/filtros.js';
 
 let estado = {
   promissorias: [],
@@ -76,6 +77,48 @@ function obterStatusReal(promissoria) {
   if (statusVencimento === 'hoje' || statusVencimento === 'amanha') return 'pendente';
   return statusVencimento;
 }
+
+/**
+ * Retorna as informações de pendência de uma promissória conforme sua modalidade.
+ * Usado em Notificações para exibir o valor correto (não o total do contrato).
+ *
+ * Modalidades:
+ *   - juros_mensais : valorPendente = jurosMensal; dataVencimentoReal = proxVencimentoJuros
+ *   - amortizacao   : valorPendente = parcela atual do cronograma
+ *   - unico         : valorPendente = valorInvestido + lucro (comportamento original)
+ *
+ * @param {object} promissoria - Documento de promissória do Firestore
+ * @returns {{ statusReal: string, valorPendente: number, dataVencimentoReal: string|null }}
+ */
+function obterInfoPendencia(promissoria) {
+  const statusReal = obterStatusReal(promissoria);
+
+  if (promissoria.modalidade === 'juros_mensais') {
+    return {
+      statusReal,
+      valorPendente: promissoria.jurosMensal || 0,
+      dataVencimentoReal: obterProxVencJuros(promissoria) || promissoria.dataVencimento
+    };
+  }
+
+  if (promissoria.modalidade === 'amortizacao') {
+    const parcelaIdx = (promissoria.parcelaAtual || 1) - 1;
+    const parcela = promissoria.cronograma?.[parcelaIdx];
+    return {
+      statusReal,
+      valorPendente: parcela ? parcela.parcela : (promissoria.valorInvestido || 0),
+      dataVencimentoReal: promissoria.dataVencimento
+    };
+  }
+
+  // Modalidade 'unico' (padrão)
+  return {
+    statusReal,
+    valorPendente: (promissoria.valorInvestido || 0) + (promissoria.lucro || 0),
+    dataVencimentoReal: promissoria.dataVencimento
+  };
+}
+
 
 async function atualizarTotalCliente(clienteId) {
   // Busca direto do banco de dados para evitar duplicação em caso de disparo do listener local
@@ -1035,8 +1078,8 @@ function renderizarCardPromissoria(p) {
               <span class="material-symbols-outlined" style="font-size: 24px;">${statusIcon}</span>
             </div>
             <div>
-              <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${nomeCliente}</h4>
-              <span style="font-size: var(--text-sm); color: var(--text-muted);">${p.descricao || 'Promissória'}</span>
+              <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${escapeHTML(nomeCliente)}</h4>
+              <span style="font-size: var(--text-sm); color: var(--text-muted);">${escapeHTML(p.descricao) || 'Promissória'}</span>
               <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
                 <span class="badge badge-neutral" style="font-size: 10px;">Origem: ${labelOrigem}</span>
                 <span class="badge" style="font-size: 10px; background: var(--bg-overlay); color: var(--color-info);">${modLabel}</span>
@@ -1340,6 +1383,23 @@ function atualizarLista(container) {
     promFiltradas = promFiltradas.filter(p => p.status === 'recebida');
   }
 
+  // Filtro de texto e data (barra de filtros)
+  const inputBusca  = container.querySelector('#promissorias-busca');
+  const inputInicio = container.querySelector('#promissorias-data-inicio');
+  const inputFim    = container.querySelector('#promissorias-data-fim');
+  if (inputBusca || inputInicio || inputFim) {
+    const termo      = inputBusca?.value.trim().toLowerCase() || '';
+    const dataInicio = inputInicio?.value || null;
+    const dataFim    = inputFim?.value    || null;
+    promFiltradas = filtrarLista(promFiltradas, {
+      campoTexto: 'clienteNome',
+      termo,
+      campoData: 'dataVencimento',
+      dataInicio,
+      dataFim,
+    });
+  }
+
   promFiltradas.sort((a, b) => {
     if (a.status === 'recebida' && b.status !== 'recebida') return 1;
     if (b.status === 'recebida' && a.status !== 'recebida') return -1;
@@ -1420,6 +1480,8 @@ function renderizarTelaPrincipal(container) {
         <button class="btn btn-sm ${estado.filtroStatus === 'recebidas' ? 'btn-primary' : 'btn-ghost'} filter-btn" data-status="recebidas">Recebidas</button>
       </div>
     </div>
+
+    ${criarHTMLBarraFiltros({ prefixo: 'promissorias', labelBusca: 'Buscar por cliente...' })}
 
     <div id="promissorias-lista">
       <!-- Injetado -->
@@ -1602,9 +1664,15 @@ function registrarEventosTela(container) {
     });
   }
 
-  // Filtros
+  // Filtros de status
   container.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => aplicarFiltro(e.target.dataset.status));
+  });
+
+  // Filtro de texto + data
+  registrarEventosFiltros(container, {
+    prefixo: 'promissorias',
+    onFiltrar: () => atualizarLista(container)
   });
 
   // Delegação de eventos para ações nos cards
@@ -1720,3 +1788,7 @@ export const PromissoriasModule = {
     );
   }
 };
+
+// Exportação auxiliar para uso em outros módulos (ex: Notificações)
+export { obterInfoPendencia };
+

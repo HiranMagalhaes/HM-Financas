@@ -71,19 +71,29 @@
 
 /* ─── PRINT — estilos mínimos de impressão ───────────────────────────────── */
 @media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  .contrato-impressao, .contrato-impressao * {
+    visibility: visible;
+  }
+  
+  .contrato-impressao {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+  }
+  
   .sidebar,
   .app-header,
   .btn,
   .toast-container {
     display: none !important;
-  }
-
-  .app-layout {
-    display: block !important;
-  }
-
-  .app-main {
-    overflow: visible;
   }
 
   body {

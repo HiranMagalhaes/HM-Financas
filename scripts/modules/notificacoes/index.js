@@ -10,7 +10,8 @@
 import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData } from '../../utils/formatters.js';
-import { calcularStatusVencimento } from '../../utils/helpers.js';
+import { calcularStatusVencimento, escapeHTML } from '../../utils/helpers.js';
+import { obterInfoPendencia } from '../promissorias/index.js';
 
 let estado = {
   cobrancas: [],
@@ -55,20 +56,35 @@ function processarNotificacoes() {
     }
   });
 
-  // 2. Processar Promissórias
+  // 2. Processar Promissórias — respeitando a modalidade de cada uma
   estado.promissorias.forEach(prom => {
-    const statusVenc = calcularStatusVencimento(prom.dataVencimento, prom.status);
-    if (statusVenc === 'atrasada' || statusVenc === 'amanha' || statusVenc === 'hoje') {
-      lista.push({
-        idOriginal: prom.id,
-        tipoOrigem: 'promissoria',
-        tipoLabel: 'Promissória',
-        nomeCliente: prom.clienteNome || 'Cliente Desconhecido',
-        valor: (prom.valorInvestido || 0) + (prom.lucro || 0),
-        dataVencimento: prom.dataVencimento,
-        status: statusVenc
-      });
+    if (prom.status === 'recebida') return; // Encerradas não geram notificação
+
+    const { statusReal, valorPendente, dataVencimentoReal } = obterInfoPendencia(prom);
+
+    // Mapear statusReal de promissórias para os status usados no sistema de notificações
+    // 'juros_vencido' e 'atrasada' → atrasada | 'juros_vence_hoje' → hoje
+    let statusNotif = null;
+    if (statusReal === 'atrasada' || statusReal === 'juros_vencido') {
+      statusNotif = 'atrasada';
+    } else if (statusReal === 'hoje' || statusReal === 'juros_vence_hoje') {
+      statusNotif = 'hoje';
+    } else if (statusReal === 'amanha') {
+      statusNotif = 'amanha';
     }
+
+    if (!statusNotif) return; // pendente/recebida não alerta
+
+    lista.push({
+      idOriginal: prom.id,
+      tipoOrigem: 'promissoria',
+      tipoLabel: 'Promissória',
+      nomeCliente: prom.clienteNome || 'Cliente Desconhecido',
+      // Valor correto por modalidade: jurosMensal, parcela atual ou valor total
+      valor: valorPendente,
+      dataVencimento: dataVencimentoReal || prom.dataVencimento,
+      status: statusNotif
+    });
   });
 
   // 3. Processar HmCred (parcelas de operações não quitadas)
@@ -216,7 +232,7 @@ function renderizarCardNotificacao(notificacao) {
             <span class="material-symbols-outlined" style="font-size: 24px;">${statusIcon}</span>
           </div>
           <div>
-            <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${notificacao.nomeCliente}</h4>
+            <h4 style="margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--text-primary);">${escapeHTML(notificacao.nomeCliente)}</h4>
             <span style="font-size: var(--text-sm); color: var(--text-muted);">${notificacao.tipoLabel} · <strong style="color:${statusCor}">${labelUrgencia}</strong></span>
           </div>
         </div>

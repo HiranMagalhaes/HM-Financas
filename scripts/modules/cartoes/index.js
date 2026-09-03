@@ -25,7 +25,7 @@
 import { AuthService }      from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, parseMoeda, formatarData } from '../../utils/formatters.js';
-import { mostrarToast }     from '../../utils/helpers.js';
+import { mostrarToast, escapeHTML } from '../../utils/helpers.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ESTADO DO MÓDULO
@@ -559,7 +559,7 @@ function renderizarCartao(cartao) {
         <div class="cc-bottom-row">
           <div>
             <p class="cc-label">Portador</p>
-            <p class="cc-value">${cartao.nome.toUpperCase()}</p>
+            <p class="cc-value">${escapeHTML(cartao.nome).toUpperCase()}</p>
           </div>
           <div style="text-align: right;">
             <p class="cc-label">Limite Total</p>
@@ -660,75 +660,101 @@ function renderizarComprasParceladas(cartaoId) {
 
   if (comprasDoCartao.length === 0) return '';
 
-  const itensHtml = comprasDoCartao.map(compra => {
-    const parcelasHtml = compra.parcelas.map((parcela, idx) => {
-      if (parcela.pago) {
-        // Parcela já paga — exibe em cinza com check
-        return `
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default); opacity: 0.5;">
-            <div style="display: flex; align-items: center; gap: var(--space-2);">
-              <span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-success);">check_circle</span>
-              <span style="font-size: var(--text-xs); color: var(--text-muted);">
-                Parcela ${parcela.numero}/${compra.numeroParcelas}
-                &middot; Venc. ${formatarData(parcela.vencimento)}
-              </span>
+  // Agrupa as compras por categoria
+  const mapaCategoria = new Map();
+  comprasDoCartao.forEach(compra => {
+    const cat = compra.categoria || 'Outros';
+    if (!mapaCategoria.has(cat)) mapaCategoria.set(cat, []);
+    mapaCategoria.get(cat).push(compra);
+  });
+
+  const itensHtml = Array.from(mapaCategoria.entries()).map(([categoria, comprasGrupo]) => {
+    const totalGrupo = comprasGrupo.reduce((acc, c) => acc + (c.valorTotal || 0), 0);
+
+    const comprasHtml = comprasGrupo.map(compra => {
+      const parcelasHtml = compra.parcelas.map((parcela, idx) => {
+        if (parcela.pago) {
+          return `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default); opacity: 0.5;">
+              <div style="display: flex; align-items: center; gap: var(--space-2);">
+                <span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-success);">check_circle</span>
+                <span style="font-size: var(--text-xs); color: var(--text-muted);">
+                  Parcela ${parcela.numero}/${compra.numeroParcelas}
+                  &middot; Venc. ${formatarData(parcela.vencimento)}
+                </span>
+              </div>
+              <span class="value-sensitive" style="font-size: var(--text-xs); color: var(--text-muted);">${formatarMoeda(parcela.valor)}</span>
             </div>
-            <span class="value-sensitive" style="font-size: var(--text-xs); color: var(--text-muted);">${formatarMoeda(parcela.valor)}</span>
+          `;
+        }
+
+        const hoje = new Date().toISOString().split('T')[0];
+        const atrasada = parcela.vencimento < hoje;
+        const corVenc = atrasada ? 'var(--color-danger)' : 'var(--text-muted)';
+
+        return `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default);">
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <span class="material-symbols-outlined" style="font-size: 16px; color: ${corVenc};">${atrasada ? 'error' : 'schedule'}</span>
+              <div>
+                <p style="margin: 0; font-size: var(--text-xs); color: var(--text-secondary); font-weight: var(--font-medium);">Parcela ${parcela.numero}/${compra.numeroParcelas}</p>
+                <p style="margin: 0; font-size: var(--text-xs); color: ${corVenc};">${atrasada ? 'Vencida em' : 'Vence em'} ${formatarData(parcela.vencimento)}</p>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <span class="value-sensitive" style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-danger);">${formatarMoeda(parcela.valor)}</span>
+              <button
+                class="btn btn-ghost btn-sm"
+                data-acao="pagar-parcela"
+                data-compra-id="${compra.id}"
+                data-parcela-idx="${idx}"
+                aria-label="Marcar parcela ${parcela.numero} como paga"
+                style="padding: 4px 8px; font-size: var(--text-xs); border-color: var(--color-success); color: var(--color-success);"
+              >
+                <span class="material-symbols-outlined" style="font-size: 14px;">payments</span>
+                Pago
+              </button>
+            </div>
           </div>
         `;
-      }
+      }).join('');
 
-      // Parcela pendente
-      const hoje = new Date().toISOString().split('T')[0];
-      const atrasada = parcela.vencimento < hoje;
-      const corVenc = atrasada ? 'var(--color-danger)' : 'var(--text-muted)';
+      const pagas = compra.parcelas.filter(p => p.pago).length;
 
       return `
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--border-default);">
-          <div style="display: flex; align-items: center; gap: var(--space-2);">
-            <span class="material-symbols-outlined" style="font-size: 16px; color: ${corVenc};">${atrasada ? 'error' : 'schedule'}</span>
-            <div>
-              <p style="margin: 0; font-size: var(--text-xs); color: var(--text-secondary); font-weight: var(--font-medium);">Parcela ${parcela.numero}/${compra.numeroParcelas}</p>
-              <p style="margin: 0; font-size: var(--text-xs); color: ${corVenc};">${atrasada ? 'Vencida em' : 'Vence em'} ${formatarData(parcela.vencimento)}</p>
+        <div style="margin-top: var(--space-3); background: var(--bg-overlay); border-radius: var(--radius-md); padding: var(--space-3); border: 1px solid var(--border-default);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-info);">splitscreen</span>
+              <span style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--text-primary);">${escapeHTML(compra.descricao)}</span>
             </div>
+            <span class="badge badge-neutral" style="font-size: 10px;">${pagas}/${compra.numeroParcelas} pagas</span>
           </div>
-          <div style="display: flex; align-items: center; gap: var(--space-2);">
-            <span class="value-sensitive" style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-danger);">${formatarMoeda(parcela.valor)}</span>
-            <button
-              class="btn btn-ghost btn-sm"
-              data-acao="pagar-parcela"
-              data-compra-id="${compra.id}"
-              data-parcela-idx="${idx}"
-              aria-label="Marcar parcela ${parcela.numero} como paga"
-              style="padding: 4px 8px; font-size: var(--text-xs); border-color: var(--color-success); color: var(--color-success);"
-            >
-              <span class="material-symbols-outlined" style="font-size: 14px;">payments</span>
-              Pago
-            </button>
+          <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-2);">
+            Total: <span class="value-sensitive">${formatarMoeda(compra.valorTotal)}</span>
+            &middot; ${formatarMoeda(compra.valorParcela)}/parcela
           </div>
+          ${parcelasHtml}
         </div>
       `;
     }).join('');
 
-    const pagas = compra.parcelas.filter(p => p.pago).length;
-
-    return `
-      <div style="margin-top: var(--space-3); background: var(--bg-overlay); border-radius: var(--radius-md); padding: var(--space-3); border: 1px solid var(--border-default);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+      return `
+      <div style="margin-top: var(--space-3);">
+        <!-- Cabeçalho do grupo de categoria -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-3); background: var(--color-info-muted); border-radius: var(--radius-sm); margin-bottom: var(--space-1); border-left: 3px solid var(--color-info);">
           <div style="display: flex; align-items: center; gap: var(--space-2);">
-            <span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-info);">splitscreen</span>
-            <span style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--text-primary);">${compra.descricao}</span>
+            <span class="material-symbols-outlined" style="font-size: 14px; color: var(--color-info);">label</span>
+            <span style="font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-info);">${escapeHTML(categoria)}</span>
+            <span class="badge" style="font-size: 10px; background: var(--color-info-muted); color: var(--color-info);">${comprasGrupo.length} compra${comprasGrupo.length > 1 ? 's' : ''}</span>
           </div>
-          <span class="badge badge-neutral" style="font-size: 10px;">${pagas}/${compra.numeroParcelas} pagas</span>
+          <span class="value-sensitive" style="font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-info);">${formatarMoeda(totalGrupo)}</span>
         </div>
-        <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-2);">
-          Total: <span class="value-sensitive">${formatarMoeda(compra.valorTotal)}</span>
-          &middot; ${formatarMoeda(compra.valorParcela)}/parcela
-        </div>
-        ${parcelasHtml}
+        ${comprasHtml}
       </div>
     `;
   }).join('');
+
 
   return `
     <div style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border-default);">

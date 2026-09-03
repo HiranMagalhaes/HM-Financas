@@ -15,7 +15,8 @@
 import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { formatarMoeda, formatarData, parseMoeda } from '../../utils/formatters.js';
-import { mostrarToast, gerarIdUnico } from '../../utils/helpers.js';
+import { mostrarToast, gerarIdUnico, escapeHTML } from '../../utils/helpers.js';
+import { criarHTMLBarraFiltros, registrarEventosFiltros, filtrarLista } from '../../utils/filtros.js';
 import { Router } from '../../router.js';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -706,8 +707,8 @@ function renderizarLinhaOperacao(op) {
     atrasado: '<span class="badge badge-danger">Atrasado</span>',
   };
 
-  const tipoLabel = op.tipoOperacao === 'retirada_cartao'
-    ? `<span class="badge badge-neutral" style="font-size: 10px;">Cartão ${op.parcelas}x (${op.cartaoOrigemNome || '?'})</span>`
+    const tipoLabel = op.tipoOperacao === 'retirada_cartao'
+    ? `<span class="badge badge-neutral" style="font-size: 10px;">Cartão ${op.parcelas}x (${escapeHTML(op.cartaoOrigemNome) || '?'})</span>`
     : `<span class="badge badge-neutral" style="font-size: 10px;">${op.taxaJuros ? op.taxaJuros + '%/mês' : 'Crédito'}</span>`;
 
   // Linha extra com data de concessão visível na segunda linha do destino
@@ -721,7 +722,7 @@ function renderizarLinhaOperacao(op) {
   return `
     <tr>
       <td>
-        <div>${op.destino}</div>
+        <div>${escapeHTML(op.destino)}</div>
         ${tipoLabel}
         ${dataConcessaoLabel}
       </td>
@@ -774,6 +775,78 @@ function renderizarLinhaOperacao(op) {
                 Parcelas não geradas para esta operação antiga. <button class="btn btn-sm btn-ghost text-info" onclick="gerarRetroativoEAtualizar('${op.id}')">Gerar agora</button>
               </div>
             `}
+          </div>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   AGRUPAMENTO DE OPERAÇÕES POR DESTINO
+───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Agrupa as operações de crédito por destinatário.
+ * Usa clienteId como chave (quando existir), caso contrário usa o texto de destino.
+ * Dentro de cada grupo, ordena por dataConcessao (mais recente primeiro).
+ *
+ * @param {Array} operacoes - Lista de operações do estado
+ * @returns {Array} Grupos no formato { chave, nomeDestino, totalConcedido, totalAReceber, operacoes[] }
+ */
+function agruparOperacoesPorDestino(operacoes) {
+  const mapaGrupos = new Map();
+
+  operacoes.forEach(op => {
+    const chave = op.clienteId || op.destino || 'Desconhecido';
+    if (!mapaGrupos.has(chave)) {
+      mapaGrupos.set(chave, {
+        chave,
+        nomeDestino: op.destino || 'Desconhecido',
+        totalConcedido: 0,
+        totalAReceber: 0,
+        operacoes: []
+      });
+    }
+    const grupo = mapaGrupos.get(chave);
+    grupo.totalConcedido += op.valorConcedido || 0;
+    grupo.totalAReceber  += op.valorReceber || 0;
+    grupo.operacoes.push(op);
+  });
+
+  // Ordena operações dentro de cada grupo: mais recentes primeiro
+  mapaGrupos.forEach(grupo => {
+    grupo.operacoes.sort((a, b) => {
+      const dA = a.dataConcessao || a.criadoEm?.toDate?.()?.toISOString() || '';
+      const dB = b.dataConcessao || b.criadoEm?.toDate?.()?.toISOString() || '';
+      return dB.localeCompare(dA);
+    });
+  });
+
+  return Array.from(mapaGrupos.values());
+}
+
+/**
+ * Gera o HTML da linha de cabeçalho de um grupo de operações.
+ *
+ * @param {object} grupo - Grupo retornado por agruparOperacoesPorDestino
+ * @returns {string} HTML da linha de cabeçalho
+ */
+function renderizarCabecalhoGrupo(grupo) {
+  const opsAbertas = grupo.operacoes.filter(o => o.status !== 'pago').length;
+  return `
+    <tr style="background: var(--bg-overlay); border-top: 2px solid var(--border-default);">
+      <td colspan="6" style="padding: var(--space-3) var(--space-4);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2);">
+          <div style="display: flex; align-items: center; gap: var(--space-2);">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-gold);">person</span>
+            <span style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--text-primary);">${escapeHTML(grupo.nomeDestino)}</span>
+            <span class="badge badge-neutral" style="font-size: 10px;">${grupo.operacoes.length} operação${grupo.operacoes.length > 1 ? 'ões' : ''}</span>
+            ${opsAbertas > 0 ? `<span class="badge badge-warning" style="font-size: 10px;">${opsAbertas} em aberto</span>` : '<span class="badge badge-success" style="font-size: 10px;">Tudo quitado</span>'}
+          </div>
+          <div style="display: flex; gap: var(--space-6); font-size: var(--text-xs);">
+            <span>Concedido: <strong class="value-sensitive">${formatarMoeda(grupo.totalConcedido)}</strong></span>
+            <span>A receber: <strong class="value-sensitive text-success">${formatarMoeda(grupo.totalAReceber)}</strong></span>
           </div>
         </div>
       </td>
@@ -863,6 +936,7 @@ function renderizarTelaPrincipal(container) {
     <div class="dashboard-section-header" style="margin-top: var(--space-8);">
       <h3 class="text-lg font-semibold">Operações de Crédito</h3>
     </div>
+    ${criarHTMLBarraFiltros({ prefixo: 'hmcred', labelBusca: 'Buscar por destino ou cliente...' })}
 
     <div class="card">
       <div class="table-responsive">
@@ -878,9 +952,30 @@ function renderizarTelaPrincipal(container) {
             </tr>
           </thead>
           <tbody>
-            ${estado.operacoes.length === 0 ? `
-              <tr><td colspan="6" class="text-center text-muted" style="padding: 24px;">Nenhuma operação registrada.</td></tr>
-            ` : estado.operacoes.map(renderizarLinhaOperacao).join('')}
+            ${(() => {
+              // Aplica filtros de texto e data antes de agrupar
+              const inputBusca  = document.querySelector('#hmcred-busca');
+              const inputInicio = document.querySelector('#hmcred-data-inicio');
+              const inputFim    = document.querySelector('#hmcred-data-fim');
+              const termo      = inputBusca?.value.trim().toLowerCase() || '';
+              const dataInicio = inputInicio?.value || null;
+              const dataFim    = inputFim?.value    || null;
+              const opsFiltradas = filtrarLista(estado.operacoes, {
+                campoTexto: 'destino',
+                termo,
+                campoData: 'dataConcessao',
+                dataInicio,
+                dataFim,
+              });
+              if (opsFiltradas.length === 0) {
+                return `<tr><td colspan="6" class="text-center text-muted" style="padding: 24px;">Nenhuma operação encontrada.</td></tr>`;
+              }
+              const grupos = agruparOperacoesPorDestino(opsFiltradas);
+              return grupos.map(grupo =>
+                renderizarCabecalhoGrupo(grupo) +
+                grupo.operacoes.map(renderizarLinhaOperacao).join('')
+              ).join('');
+            })()}
           </tbody>
         </table>
       </div>
@@ -968,6 +1063,12 @@ function renderizarTelaPrincipal(container) {
   // Botão Nova Operação
   const btnNova = document.getElementById('btn-nova-operacao');
   if (btnNova) btnNova.addEventListener('click', () => abrirModal('modal-nova-operacao'));
+
+  // Filtro de texto + data
+  registrarEventosFiltros(container, {
+    prefixo: 'hmcred',
+    onFiltrar: () => renderizarTelaPrincipal(container)
+  });
 
   // Botão Editar Capital
   const btnEditarCap = document.getElementById('btn-editar-capital');

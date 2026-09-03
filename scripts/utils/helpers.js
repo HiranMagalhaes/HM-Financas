@@ -216,6 +216,29 @@ function calcularStatusVencimento(dataVencimento, statusAtual, statusResolvidos 
   return 'pendente';
 }
 
+/* ───────────────────────────────────────────────────────────────────────────
+   SEGURANÇA — ESCAPE DE HTML
+─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Escapa caracteres especiais de HTML para evitar XSS ao inserir dados
+ * do usuário/Firestore via innerHTML.
+ *
+ * Converte: & → &amp;  < → &lt;  > → &gt;  " → &quot;  ' → &#039;
+ *
+ * @param {*} texto - Valor a escapar (qualquer tipo é aceito)
+ * @returns {string} Texto seguro para uso em innerHTML
+ */
+function escapeHTML(texto) {
+  if (texto === null || texto === undefined) return '';
+  return String(texto)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export {
   $,
   $q,
@@ -227,4 +250,5 @@ export {
   copiarParaClipboard,
   debounce,
   calcularStatusVencimento,
+  escapeHTML,
 };

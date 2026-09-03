@@ -8,7 +8,7 @@
 import { AuthService } from '../../firebase/auth-service.js';
 import { FirestoreService } from '../../firebase/firestore-service.js';
 import { alternarTema, aplicarVisibilidadeValores } from '../../app.js';
-import { mostrarToast } from '../../utils/helpers.js';
+import { mostrarToast, escapeHTML } from '../../utils/helpers.js';
 import { Router } from '../../router.js';
 
 let preferenciasCarregadas = false;
@@ -255,8 +255,8 @@ export const ConfiguracoesModule = {
     lista.innerHTML = estadoPix.chaves.map(pix => `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-overlay); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
         <div>
-          <div style="font-weight: var(--font-medium); color: var(--text-primary);">${pix.apelido}</div>
-          <div style="font-size: var(--text-sm); color: var(--text-muted);">${pix.chave}</div>
+          <div style="font-weight: var(--font-medium); color: var(--text-primary);">${escapeHTML(pix.apelido)}</div>
+          <div style="font-size: var(--text-sm); color: var(--text-muted);">${escapeHTML(pix.chave)}</div>
         </div>
         <button class="btn btn-ghost btn-icon btn-excluir-pix" data-id="${pix.id}" title="Excluir">
           <span class="material-symbols-outlined" style="color: var(--color-danger);">delete</span>
